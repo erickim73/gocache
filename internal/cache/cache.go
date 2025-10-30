@@ -1,38 +1,63 @@
 package cache
 
-import "sync"
+import (
+	"sync" 
+	"time"
+)
+
+type item struct {
+	value string
+	expiresAt time.Time
+}
 
 type Cache struct {
-	data map[string]string
+	data map[string]*item
 	maxSize int
 	mu sync.RWMutex   // read write lock
 }
 
 func New(maxSize int) *Cache {
 	return &Cache{
-		data: make(map[string]string),
+		data: make(map[string]*item),
 		maxSize: maxSize,
 	}
 }
 
-func (c *Cache) Set(key, value string) {
+func (c *Cache) Set(key, value string, ttl time.Duration) {
 	c.mu.Lock() 		// exclusive access for writes
 	defer c.mu.Unlock()
 
-	c.data[key] = value
+	var expiresAt time.Time
+	if ttl > 0 {
+		expiresAt = time.Now().Add(ttl)
+	}
+
+	c.data[key] = &item{
+		value: value,
+		expiresAt: expiresAt,
+	}
 }
 
 func (c *Cache) Get(key string) (string, bool) {
 	c.mu.RLock() 		// multiple readers can enter
 	defer c.mu.RUnlock()
 	
-	value, exists := c.data[key]
-	return value, exists
+	item, exists := c.data[key]
+	
+	if !exists {
+		return "", false
+	}
+
+
+	if item.expiresAt.IsZero() || time.Now().After(item.expiresAt) {
+		return "", false
+	}
+	return item.value, true
 }
 
 func (c *Cache) Delete(key string) {
 	c.mu.Lock() 		// exclusive access for writes
 	defer c.mu.Unlock()
-	
+
 	delete(c.data, key)	
 }

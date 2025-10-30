@@ -2,12 +2,14 @@ package cache
 
 import (
 	"testing"
+	"time"
+	
 )
 
 func TestSetAndGet(t *testing.T) {
 	cache := New(100)
 
-	cache.Set("eric", "smart")
+	cache.Set("eric", "smart", 100 * time.Second)
 	result, exists := cache.Get("eric")
 	expected := "smart"
 
@@ -22,7 +24,7 @@ func TestSetAndGet(t *testing.T) {
 func TestInvalidKey(t *testing.T) {
 	cache := New(100)
 
-	cache.Set("eric", "smart")
+	cache.Set("eric", "smart", 100 * time.Second)
 	result, exists := cache.Get("aiden")
 
 	if exists {
