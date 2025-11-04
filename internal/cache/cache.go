@@ -3,6 +3,7 @@ package cache
 import (
 	"sync" 
 	"time"
+	"errors"
 )
 
 type item struct {
@@ -23,9 +24,16 @@ func New(maxSize int) *Cache {
 	}
 }
 
-func (c *Cache) Set(key, value string, ttl time.Duration) {
+func (c *Cache) Set(key, value string, ttl time.Duration) error {
 	c.mu.Lock() 		// exclusive access for writes
 	defer c.mu.Unlock()
+
+	_, exists := c.data[key]
+	currentSize := len(c.data)
+
+	if !exists && currentSize >= c.maxSize {
+		return errors.New("Cache is full")
+	}
 
 	var expiresAt time.Time
 	if ttl > 0 {
@@ -36,6 +44,7 @@ func (c *Cache) Set(key, value string, ttl time.Duration) {
 		value: value,
 		expiresAt: expiresAt,
 	}
+	return nil	
 }
 
 func (c *Cache) Get(key string) (string, bool) {
@@ -48,8 +57,7 @@ func (c *Cache) Get(key string) (string, bool) {
 		return "", false
 	}
 
-
-	if item.expiresAt.IsZero() || time.Now().After(item.expiresAt) {
+	if !item.expiresAt.IsZero() && time.Now().After(item.expiresAt) {
 		return "", false
 	}
 	return item.value, true
