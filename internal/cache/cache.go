@@ -3,54 +3,62 @@ package cache
 import (
 	"sync" 
 	"time"
-	"errors"
+	"github.com/erickim73/gocache/internal/lru"
 )
 
-type node struct {
-	key string
+
+type CacheItem struct {
 	value string
 	expiresAt time.Time
-	prev *node
-	next *node
+	node *lru.Node
 }
 
 type Cache struct {
-	data map[string]*node
+	data map[string]*CacheItem
+	lru *lru.LRU
 	maxSize int
-	head *node
-	tail *node
 	mu sync.RWMutex   // read write lock
 }
 
 func New(maxSize int) *Cache {
 	return &Cache{
-		data: make(map[string]*node),
+		data: make(map[string]*CacheItem),
 		maxSize: maxSize,
+		lru: &lru.LRU{},
 	}
 }
 
-func (c *Cache) Set(key, value string, ttl time.Duration) error {
+func (c *Cache) Set(key, value string, ttl time.Duration) {
 	c.mu.Lock() 		// exclusive access for writes
 	defer c.mu.Unlock()
 
+	// check if key exists
 	_, exists := c.data[key]
-	currentSize := len(c.data)
 
-	if !exists && currentSize >= c.maxSize {
-		return errors.New("Cache is full")
+	// if cache is full and key doesn't exist
+	if !exists && len(c.data) >= c.maxSize {
+		deletedKey := c.lru.RemoveLRU()
+		delete(c.data, deletedKey)
 	}
 
+	// calculate expiration
 	var expiresAt time.Time
 	if ttl > 0 {
 		expiresAt = time.Now().Add(ttl)
 	}
 
-	c.data[key] = &node{
-		key: key,
-		value: value,
-		expiresAt: expiresAt,
+	if exists {
+		c.data[key].value = value
+		c.data[key].expiresAt = expiresAt
+		c.lru.MoveToFront(c.data[key].node)
+	} else {
+		node := c.lru.Add(key)
+		c.data[key] = &CacheItem{
+			value: value,
+			expiresAt: expiresAt,
+			node: node,
+		}
 	}
-	return nil	
 }
 
 func (c *Cache) Get(key string) (string, bool) {
@@ -67,7 +75,7 @@ func (c *Cache) Get(key string) (string, bool) {
 		return "", false
 	}
 	
-	c.moveToFront(node)
+	c.lru.MoveToFront(node.node)
 	return node.value, true
 }
 
@@ -75,62 +83,13 @@ func (c *Cache) Delete(key string) {
 	c.mu.Lock() 		// exclusive access for writes
 	defer c.mu.Unlock()
 
+	item, exists := c.data[key]
+
+	if !exists {
+		return 
+	}
+
+	c.lru.RemoveNode(item.node)
 	delete(c.data, key)	
 }
 
-// removes node from the doubly linked list
-func (c *Cache) removeNode(node *node) {
-	// Only node in the list
-	if c.head == node && c.tail == node { 
-		c.head = nil
-		c.tail = nil
-		return
-	} 
-	
-	// Node is at head
-	if c.head == node { 
-		c.head = node.next
-		node.next.prev = nil
-		return
-	} 
-		
-	// Node is at tail
-	if c.tail == node { 
-		c.tail = node.prev
-		node.prev.next = nil
-		return
-	} 
-	
-	// Node is in middle
-	node.prev.next = node.next
-	node.next.prev = node.prev
-}
-
-// adds a node to the front of the list
-func (c *Cache) addToFront(node *node) {
-	// Empty list
-	if c.head == nil && c.tail == nil { 
-		c.head = node
-		c.tail = node
-		node.next = nil
-		node.prev = nil
-		return
-	} 
-
-	// Non-empty list
-	node.prev = nil
-	node.next = c.head
-	c.head.prev = node
-	c.head = node
-}
-
-
-func (c *Cache) moveToFront(node *node) {
-	// Node is at head
-	if c.head == node { 
-		return
-	} 
-
-	c.removeNode(node)
-	c.addToFront(node)
-}
