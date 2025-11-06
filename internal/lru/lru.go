@@ -76,6 +76,7 @@ func (lru *LRU) MoveToFront(node *Node) {
 }
 
 // Removes the node at the tail of the list
+// Returns key of tail key that was removed
 func (lru *LRU) RemoveLRU() string {
 	if lru.tail == nil {
 		return ""
