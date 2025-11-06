@@ -1,9 +1,5 @@
 package lru
 
-import (
-	// "time"
-)
-
 type Node struct {
 	key string
 	prev *Node
@@ -15,7 +11,14 @@ type LRU struct {
 	tail *Node
 }
 
-// removes node from the doubly linked list
+func New(maxSize int) *LRU {
+	return &LRU{
+		head: nil,
+		tail: nil,
+	}
+}
+
+// Removes node from the doubly linked list
 func (lru *LRU) RemoveNode(node *Node) {
 	// Only node in the list
 	if lru.head == node && lru.tail == node { 
@@ -43,7 +46,7 @@ func (lru *LRU) RemoveNode(node *Node) {
 	node.next.prev = node.prev
 }
 
-// adds a node to the front of the list
+// Adds a node to the front of the list
 func (lru *LRU) addToFront(node *Node) {
 	// Empty list
 	if lru.head == nil && lru.tail == nil { 
@@ -61,7 +64,7 @@ func (lru *LRU) addToFront(node *Node) {
 	lru.head = node
 }
 
-
+// Moves an existing node to the front of the list
 func (lru *LRU) MoveToFront(node *Node) {
 	// Node is at head
 	if lru.head == node { 
@@ -72,12 +75,15 @@ func (lru *LRU) MoveToFront(node *Node) {
 	lru.addToFront(node)
 }
 
+// Removes the node at the tail of the list
 func (lru *LRU) RemoveLRU() string {
 	if lru.tail == nil {
 		return ""
 	}
+	
 	key := lru.tail.key
 	lru.RemoveNode(lru.tail)
+
 	return key
 }
 

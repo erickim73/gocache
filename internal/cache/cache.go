@@ -23,8 +23,8 @@ type Cache struct {
 func New(maxSize int) *Cache {
 	return &Cache{
 		data: make(map[string]*CacheItem),
-		maxSize: maxSize,
 		lru: &lru.LRU{},
+		maxSize: maxSize,
 	}
 }
 
