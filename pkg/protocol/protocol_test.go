@@ -131,3 +131,33 @@ func TestParseBulkString(t *testing.T) {
 		t.Errorf("Expected 'Hello World', got %s", str)
 	}
 }
+
+func TestParseArray(t *testing.T) {
+	input := "*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"
+	reader := bufio.NewReader(strings.NewReader(input))
+	result, err := Parse(reader)
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	arr, ok := result.([]interface{})
+	if !ok {
+		t.Fatal("Expected result to be a slice")
+	}
+
+	// check length of array
+	if len(arr) != 2 {
+		t.Errorf("Expected 2 elements, got %d", len(arr))
+	}
+
+	// check first element
+	if arr[0].(string) != "foo" {
+		t.Errorf("Expected first element to be 'foo', got %v", arr[0])
+	}
+
+	// check second element
+	if arr[1].(string) != "bar" {
+		t.Errorf("Expected second element to be 'bar', got %v", arr[1])
+	}
+}

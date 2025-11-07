@@ -24,6 +24,8 @@ func Parse(r *bufio.Reader) (interface{}, error) {
 		return parseInteger(r)
 	case '$':
 		return parseBulkString(r)
+	case '*':
+		return parseArray(r)
 	default:
 		return nil, errors.New("unknown RESP type")
 	}
@@ -80,6 +82,7 @@ func parseInteger(r *bufio.Reader) (int, error) {
 
 // Parses Bulk Strings. Expects "$[length]\r\n[string]\r\n"
 func parseBulkString(r *bufio.Reader) (string, error) {
+	// extract length
 	lengthStr, err := readLine(r)
 	if err != nil {
 		return "", err
@@ -114,4 +117,37 @@ func parseBulkString(r *bufio.Reader) (string, error) {
 	}
 
 	return string(data), nil
+}
+
+// Parse Arrays. Expects '*[length]\r\n[array]\r\n'
+func parseArray(r *bufio.Reader) ([]interface{}, error) {
+	// extract length
+	lengthStr, err := readLine(r)
+	if err != nil {
+		return nil, err
+	}
+
+	length, err := strconv.Atoi(lengthStr)
+	if err != nil {
+		return nil, errors.New("invalid array length")
+	}
+
+	// handle null
+	if length == -1 {
+		return nil, nil
+	}
+
+	// create an empty res array
+	res := make([]interface{}, 0, length)
+
+	// parse each element
+	for i := 0; i < length; i++ {
+		element, err := Parse(r)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, element)
+	}
+
+	return res, nil
 }
