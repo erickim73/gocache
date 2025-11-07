@@ -90,6 +90,25 @@ func TestParseError(t *testing.T) {
 	}
 
 	if str != "ERR unknown command 'abc'" {
-		t.Errorf("Expected ERR unknown command 'abc', got %s", str)
+		t.Errorf("Expected 'ERR unknown command 'abc'', got %s", str)
+	}
+}
+
+func TestInteger(t *testing.T) {
+	input := ":12\r\n"
+	reader := bufio.NewReader(strings.NewReader(input))
+	result, err := Parse(reader)
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	integer, ok := result.(int)
+	if !ok {
+		t.Fatal("Expected result to be a integer")
+	}
+
+	if integer != 12{
+		t.Errorf("Expected 12, got %d", integer)
 	}
 }
