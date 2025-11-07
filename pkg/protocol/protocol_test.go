@@ -14,10 +14,33 @@ func TestEncodeSimpleString(t *testing.T) {
 }
 
 func TestEncodeBulkString(t *testing.T) {
-	result := EncodeBulkString("Hello World")
+	result := EncodeBulkString("Hello World", false)
 	expected := "$11\r\nHello World\r\n"
 
 	if result != expected {
 		t.Errorf("Encoding bulk string got %s, expected %s", result, expected)
+	}
+
+	result2 := EncodeBulkString("", false)
+	expected2 := "$0\r\n\r\n"
+
+	if result2 != expected2 {
+		t.Errorf("Encoding bulk string got %s, expected %s", result, expected)
+	}
+	
+	result3 := EncodeBulkString("", true)
+	expected3 := "$-1\r\n"
+	
+	if result3 != expected3 {
+		t.Errorf("Encoding bulk string got %s, expected %s", result, expected)
+	}
+}
+
+func TestEncodeInteger(t *testing.T) {
+	result := EncodeInteger(12)
+	expected := ":12\r\n"
+
+	if result != expected {
+		t.Errorf("Encoding integer got %s, expected %s", result, expected)
 	}
 }
