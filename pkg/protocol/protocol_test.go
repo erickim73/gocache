@@ -2,6 +2,8 @@ package protocol
 
 import (
 	"testing"
+	"bufio"
+	"strings"
 )
 
 func TestEncodeSimpleString(t *testing.T) {
@@ -52,4 +54,24 @@ func TestEncodeError(t *testing.T) {
 	if result != expected {
 		t.Errorf("Encoding error message got %s, expected %s", result, expected)
 	}
+}
+
+func TestParseSimpleString(t *testing.T) {
+	input := "+OK\r\n"
+	reader := bufio.NewReader(strings.NewReader(input))
+	result, err := Parse(reader)
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	str, ok := result.(string)
+	if !ok {
+		t.Fatal("Expected result to be a string")
+	}
+
+	if str != "OK" {
+		t.Errorf("Expected 'OK', got %s", str)
+	}
+
 }
