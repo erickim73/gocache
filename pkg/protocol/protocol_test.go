@@ -94,7 +94,7 @@ func TestParseError(t *testing.T) {
 	}
 }
 
-func TestInteger(t *testing.T) {
+func TestParseInteger(t *testing.T) {
 	input := ":12\r\n"
 	reader := bufio.NewReader(strings.NewReader(input))
 	result, err := Parse(reader)
@@ -108,7 +108,26 @@ func TestInteger(t *testing.T) {
 		t.Fatal("Expected result to be a integer")
 	}
 
-	if integer != 12{
+	if integer != 12 {
 		t.Errorf("Expected 12, got %d", integer)
+	}
+}
+
+func TestParseBulkString(t *testing.T) {
+	input := "$11\r\nHello World\r\n"
+	reader := bufio.NewReader(strings.NewReader(input))
+	result, err := Parse(reader)
+
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	str, ok := result.(string)
+	if !ok {
+		t.Fatal("Expected result to be a string")
+	}
+
+	if str != "Hello World" {
+		t.Errorf("Expected 'Hello World', got %s", str)
 	}
 }

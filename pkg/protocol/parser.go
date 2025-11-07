@@ -3,6 +3,7 @@ package protocol
 import (
 	"bufio"
 	"errors"
+	"io"
 	"strconv"
 	"strings"
 )
@@ -21,6 +22,8 @@ func Parse(r *bufio.Reader) (interface{}, error) {
 		return parseError(r)
 	case ':':
 		return parseInteger(r)
+	case '$':
+		return parseBulkString(r)
 	default:
 		return nil, errors.New("unknown RESP type")
 	}
@@ -66,9 +69,49 @@ func parseInteger(r *bufio.Reader) (int, error) {
 
 	// remove \r\n
 	strNum := strings.TrimSuffix(line, "\r\n")
+
+	// convert int --> string
 	num, err := strconv.Atoi(strNum)
 	if err != nil {
 		return 0, errors.New("invalid RESP: not a valid integer")
 	}
 	return num, nil
+}
+
+// Parses Bulk Strings. Expects "$[length]\r\n[string]\r\n"
+func parseBulkString(r *bufio.Reader) (string, error) {
+	lengthStr, err := readLine(r)
+	if err != nil {
+		return "", err
+	}
+
+	length, err := strconv.Atoi(lengthStr)
+	if err != nil {
+		return "", errors.New("invalid bulk string length")
+	}
+
+	// handle null
+	if length == -1 {
+		return "", nil
+	}
+
+	// read exactly n bytes
+	data := make([]byte, length)
+	_, err = io.ReadFull(r, data)
+	if err != nil {
+		return "", err
+	}
+
+	// consume trailing \r\n
+	cr, err := r.ReadByte()
+	if err != nil || cr != '\r' {
+		return "", errors.New("expected \\r after bulk string data")
+	}	
+
+	lf, err := r.ReadByte()
+	if err != nil || lf != '\n' {
+		return "", errors.New("expected \\n after bulk string data")
+	}
+
+	return string(data), nil
 }
