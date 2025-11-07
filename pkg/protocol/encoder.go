@@ -23,3 +23,9 @@ func EncodeBulkString(s string, isNull bool) string {
 func EncodeInteger(n int) string {
 	return ":" + strconv.Itoa(n) + "\r\n"
 }
+
+// Encodes an error message into -[Error]\r\n
+func EncodeError(s string) string {
+	return "-" + s + "\r\n"
+}
+

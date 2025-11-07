@@ -44,3 +44,12 @@ func TestEncodeInteger(t *testing.T) {
 		t.Errorf("Encoding integer got %s, expected %s", result, expected)
 	}
 }
+
+func TestEncodeError(t *testing.T) {
+	result := EncodeError("ERR unknown command 'abc'")
+	expected := "-ERR unknown command 'abc'\r\n"
+	
+	if result != expected {
+		t.Errorf("Encoding error message got %s, expected %s", result, expected)
+	}
+}
