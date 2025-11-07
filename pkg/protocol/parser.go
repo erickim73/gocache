@@ -26,8 +26,8 @@ func Parse(r *bufio.Reader) (interface{}, error) {
 	}
 }
 
-// Parses simple string. Expects "+[string]\r\n"
-func parseSimpleString(r *bufio.Reader) (string, error) {
+// Helper function for reading a string line. Reads a line and validates \r\n
+func readLine(r *bufio.Reader) (string, error) {
 	line, err := r.ReadString('\n')
 	if err != nil {
 		return "", err
@@ -42,20 +42,14 @@ func parseSimpleString(r *bufio.Reader) (string, error) {
 	return strings.TrimSuffix(line, "\r\n"), nil
 }
 
+// Parses simple string. Expects "+[string]\r\n"
+func parseSimpleString(r *bufio.Reader) (string, error) {
+	return readLine(r)
+}
+
 // Parses Error Messages. Expects "-[Error]\r\n"
 func parseError(r *bufio.Reader) (string, error) {
-	line, err := r.ReadString('\n')
-	if err != nil {
-		return "", err
-	}
-
-	// check if it has \r\n
-	if !strings.HasSuffix(line, "\r\n") {
-		return "", errors.New("invalid RESP: missing \\r\\n")
-	}
-
-	// remove \r\n
-	return strings.TrimSuffix(line, "\r\n"), nil
+	return readLine(r)
 }
 
 // Parses Integers. Expects ":[num]\r\n"
