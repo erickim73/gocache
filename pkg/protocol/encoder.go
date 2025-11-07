@@ -4,7 +4,7 @@ import (
 	"strconv"
 )
 
-// Encodes a simple string s to "+s\r\n"
+// Encodes a simple string to "+[string]\r\n"
 func EncodeSimpleString(s string) string {
 	return "+" + s + "\r\n"
 }
@@ -36,6 +36,6 @@ func EncodeArray(elements []string) string {
 	for _, value := range elements {
 		result += EncodeBulkString(value, false)
 	}
-	
+
 	return result
 }

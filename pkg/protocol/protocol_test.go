@@ -73,5 +73,23 @@ func TestParseSimpleString(t *testing.T) {
 	if str != "OK" {
 		t.Errorf("Expected 'OK', got %s", str)
 	}
+}
 
+func TestParseError(t *testing.T) {
+	input := "-ERR unknown command 'abc'\r\n"
+	reader := bufio.NewReader(strings.NewReader(input))
+	result, err := Parse(reader)
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	str, ok := result.(string)
+	if !ok {
+		t.Fatal("Expected result to be a string")
+	}
+
+	if str != "ERR unknown command 'abc'" {
+		t.Errorf("Expected ERR unknown command 'abc', got %s", str)
+	}
 }
