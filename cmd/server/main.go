@@ -5,9 +5,10 @@ import (
 	"net"
 	"bufio"
 	"github.com/erickim73/gocache/pkg/protocol"
+	"github.com/erickim73/gocache/internal/cache"
 )
 
-func handleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn, cache *cache.Cache) {
 	defer conn.Close()
 
 	// read from client
@@ -19,14 +20,31 @@ func handleConnection(conn net.Conn) {
 			return
 		}
 		
-		message := fmt.Sprintf("%v", result)
-		fmt.Println("Received", result)
-
-		// echo message back to client
-		_, err = conn.Write([]byte("Echo: " + message))
-		if err != nil {
-			fmt.Println("Err writing", err)
+		resultSlice, ok := result.([]interface{})
+		if !ok {
+			fmt.Println("Error: result is not a slice")
 			return
+		}
+		command := resultSlice[0]
+
+		if command == "SET" {
+			key := resultSlice[1].(string)
+			value := resultSlice[2].(string)
+
+			cache.Set(key, value, 0)
+
+			conn.Write([]byte(protocol.EncodeSimpleString("OK")))
+		} else if command == "GET" {
+			key := resultSlice[1].(string)
+
+			result, exists := cache.Get(key)
+
+			if !exists {
+				conn.Write([]byte(protocol.EncodeBulkString("", true)))
+			} else {
+				conn.Write([]byte(protocol.EncodeBulkString(result, false)))
+			}
+
 		}
 	}
 
@@ -43,6 +61,8 @@ func main() {
 
 	fmt.Println("Listening on :6379...")
 
+	myCache := cache.New(1000)
+
 	for {
 		// accept an incoming connection
 		conn, err := listener.Accept()
@@ -52,6 +72,6 @@ func main() {
 		}
 
 		// handle connection in a separate goroutine
-		go handleConnection(conn)
+		go handleConnection(conn, myCache)
 	}
 }
