@@ -4,8 +4,8 @@ import (
 	"net"
 	"log"
 	"fmt"
-	"io"
-	"strings"
+	"os"
+	"bufio"
 )
 
 func main() {
@@ -17,19 +17,28 @@ func main() {
 
 	defer conn.Close()
 
-	// send a message
-	data := "Hello, server!"
-	if _, err := io.Copy(conn, strings.NewReader(data)); err != nil {
-		fmt.Println("Error sending data:", err)
-		return
-	}
-	
-	buf := make([]byte, len(data))
-	_, err = io.ReadFull(conn, buf)
-	if err != nil {
-		fmt.Println("Error reading data:", err)
-		return
-	}
+	fmt.Println("Connected to server.")
 
-	fmt.Println(string(buf))
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Print("You:")
+		text, _ := reader.ReadString('\n')
+
+		// send message to server
+		_, err := conn.Write([]byte(text))
+		if err != nil {
+			fmt.Println("Error sending message to server:", err)
+			return
+		}
+
+		// read reply
+		reply := make([]byte, 1024)
+		n, err := conn.Read(reply)
+		if err != nil {
+			fmt.Println("Error reading reply:", err)
+			return
+		}
+
+		fmt.Println("Server:", string(reply[:n]))
+	}
 }

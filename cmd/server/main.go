@@ -10,19 +10,30 @@ func handleConnection(conn net.Conn) {
 
 	// read from client
 	buf := make([]byte, 1024)
-	n, err := conn.Read(buf)
-	if err != nil {
-		fmt.Println(err)
+	for {
+		n, err := conn.Read(buf)
+		if err != nil {
+			fmt.Println(err)
+		}
+		
+		message := string(buf[:n])
+		fmt.Println("Received", message)
+
+		// echo message back to client
+		_, err = conn.Write([]byte("Echo: " + message))
+		if err != nil {
+			fmt.Println("Err writing", err)
+			return
+		}
 	}
 
-	fmt.Println(string(buf[:n]))
 }
 
 func main() {
 	// create a tcp listener on port 6379
 	listener, err := net.Listen("tcp", ":6379")
 	if err != nil {
-		fmt.Println("Error creating listener:", err)
+		fmt.Println("Error creating listene	r:", err)
 		return
 	}
 	defer listener.Close()
