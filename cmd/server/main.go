@@ -3,21 +3,24 @@ package main
 import (
 	"fmt"
 	"net"
+	"bufio"
+	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	// read from client
-	buf := make([]byte, 1024)
+	reader := bufio.NewReader(conn)
 	for {
-		n, err := conn.Read(buf)
+		result, err := protocol.Parse(reader)
 		if err != nil {
 			fmt.Println(err)
+			return
 		}
 		
-		message := string(buf[:n])
-		fmt.Println("Received", message)
+		message := fmt.Sprintf("%v", result)
+		fmt.Println("Received", result)
 
 		// echo message back to client
 		_, err = conn.Write([]byte("Echo: " + message))
@@ -33,7 +36,7 @@ func main() {
 	// create a tcp listener on port 6379
 	listener, err := net.Listen("tcp", ":6379")
 	if err != nil {
-		fmt.Println("Error creating listene	r:", err)
+		fmt.Println("Error creating listener:", err)
 		return
 	}
 	defer listener.Close()
