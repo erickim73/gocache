@@ -1,41 +1,43 @@
 package main
 
 import (
-	"net"
-	"log"
 	"fmt"
+	"net"
 )
 
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
-	// read from the client
+
+	// read from client
 	buf := make([]byte, 1024)
 	n, err := conn.Read(buf)
 	if err != nil {
-		log.Println(err)
+		fmt.Println(err)
 	}
 
 	fmt.Println(string(buf[:n]))
-
-	fmt.Fprintf(conn, "Echo = " + string(buf[:n]))
 }
 
 func main() {
-	ln, err := net.Listen("tcp", "localhost:8080")
+	// create a tcp listener on port 6379
+	listener, err := net.Listen("tcp", ":6379")
 	if err != nil {
-		log.Fatalln(err)
+		fmt.Println("Error creating listener:", err)
+		return
 	}
+	defer listener.Close()
 
-	defer ln.Close()
+	fmt.Println("Listening on :6379...")
 
 	for {
 		// accept an incoming connection
-		conn, err := ln.Accept()
+		conn, err := listener.Accept()
 		if err != nil {
-			log.Println(err)
+			fmt.Println("Error accepting connection:", err)
+			continue
 		}
 
-		// handle the connection
+		// handle connection in a separate goroutine
 		go handleConnection(conn)
 	}
 }
