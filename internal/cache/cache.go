@@ -20,7 +20,7 @@ type Cache struct {
 	mu sync.RWMutex   // read write lock
 }
 
-func New(maxSize int) *Cache {
+func New(maxSize int) *Cache {	
 	return &Cache{
 		data: make(map[string]*CacheItem),
 		lru: &lru.LRU{},

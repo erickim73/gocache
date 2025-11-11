@@ -28,6 +28,11 @@ func handleConnection(conn net.Conn, cache *cache.Cache) {
 		command := resultSlice[0]
 
 		if command == "SET" {
+			if len(resultSlice) != 3 {
+				conn.Write([]byte(protocol.EncodeError("Length of command doesn't match")))
+				continue
+			}
+
 			key := resultSlice[1].(string)
 			value := resultSlice[2].(string)
 
@@ -35,6 +40,11 @@ func handleConnection(conn net.Conn, cache *cache.Cache) {
 
 			conn.Write([]byte(protocol.EncodeSimpleString("OK")))
 		} else if command == "GET" {
+			if len(resultSlice) != 2 {
+				conn.Write([]byte(protocol.EncodeError("Length of command doesn't match")))
+				continue
+			}
+
 			key := resultSlice[1].(string)
 
 			result, exists := cache.Get(key)
@@ -44,7 +54,18 @@ func handleConnection(conn net.Conn, cache *cache.Cache) {
 			} else {
 				conn.Write([]byte(protocol.EncodeBulkString(result, false)))
 			}
+		} else if command == "DEL" {
+			if len(resultSlice) != 2 {
+				conn.Write([]byte(protocol.EncodeError("Length of command doesn't match")))
+				continue
+			}
 
+			key := resultSlice[1].(string)
+
+			cache.Delete(key)
+			conn.Write([]byte(protocol.EncodeSimpleString("OK")))
+		} else {
+			conn.Write([]byte(protocol.EncodeError("Unknown command " + command.(string))))
 		}
 	}
 
