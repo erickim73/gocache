@@ -73,7 +73,7 @@ func handleConnection(conn net.Conn, cache *cache.Cache) {
 
 func main() {
 	// create a tcp listener on port 6379
-	listener, err := net.Listen("tcp", ":6379")
+	listener, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
 		fmt.Println("Error creating listener:", err)
 		return
