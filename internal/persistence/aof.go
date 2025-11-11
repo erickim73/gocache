@@ -9,8 +9,13 @@ import (
 )
 
 // Determines how often data is appended to AOF
-// 0 = always, 1 = every sec, 2 = no
 type SyncPolicy int
+
+const (
+	SyncAlways SyncPolicy = 0
+	SyncEverySecond SyncPolicy = 1
+	SyncNo SyncPolicy = 2
+)
 
 type AOF struct {
 	file * os.File
@@ -25,7 +30,16 @@ func NewAOF (fileName string, policy SyncPolicy) (*AOF, error) {
 		return nil, err
 	}
 
-	return &AOF{file: file, policy: policy}, nil
+	aof := &AOF {
+		file: file,
+		policy: policy,
+	}
+
+	if policy == SyncEverySecond {
+		go aof.periodicSync()
+	}
+
+	return aof, nil
 }
 
 func (aof *AOF) append(data string) error {
@@ -38,14 +52,14 @@ func (aof *AOF) append(data string) error {
 		return err
 	}
 
-	if aof.policy == 0 {
+	if aof.policy == SyncAlways {
 		// ensure durability
 		err = aof.file.Sync()
 		if err != nil {
 			return fmt.Errorf("fsync failed: %v", err)
 		}
 	}
-	
+
 	return nil
 }
 
