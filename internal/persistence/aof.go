@@ -12,10 +12,30 @@ type AOF struct {
 }
 
 func NewAOF (fileName string) (*AOF, error) {
-	file, err := os.Create(fileName)
+	// open file for read/write, create if it doesn't exist
+	file, err := os.OpenFile(fileName, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0644)
 	if err != nil {
-		fmt.Printf("Error creating file: %v", err)
+		fmt.Printf("Error opening file: %v", err)
 	}
 
 	return &AOF{file: file}, nil
+}
+
+func (aof *AOF) appendAOF (data string) error {
+	aof.mu.Lock()
+	defer aof.mu.Unlock()
+
+	line := data + "\n"
+	_, err := aof.file.Write([]byte(line))
+	if err != nil {
+		return err
+	}
+
+	// ensure durability
+	err = aof.file.Sync()
+	if err != nil {
+		return fmt.Errorf("fsync failed: %v", err)
+	}
+	
+	return nil
 }
