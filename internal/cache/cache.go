@@ -1,12 +1,10 @@
 package cache
 
 import (
-	"fmt"
 	"sync"
 	"time"
 	"github.com/erickim73/gocache/internal/lru"
 	"github.com/erickim73/gocache/internal/persistence"
-	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 
