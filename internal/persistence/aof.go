@@ -1,10 +1,13 @@
 package persistence
 
 import (
-	"sync"
-	"os"
+	"bufio"
 	"fmt"
+	"os"
+	"sync"
 	"time"
+	"io"
+	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 // Determines how often data is appended to AOF
@@ -18,9 +21,16 @@ const (
 
 type AOF struct {
 	file * os.File
+	fileName string
 	mu sync.Mutex   // read write lock
 	policy SyncPolicy
 	done chan struct{}
+}
+
+type Operation struct {
+	Type string // SET or DEL
+	Key string
+	Value string
 }
 
 func NewAOF (fileName string, policy SyncPolicy) (*AOF, error) {
@@ -32,6 +42,7 @@ func NewAOF (fileName string, policy SyncPolicy) (*AOF, error) {
 
 	aof := &AOF {
 		file: file,
+		fileName: fileName,
 		policy: policy,
 		done: make(chan struct{}),
 	}
@@ -89,4 +100,47 @@ func (aof *AOF) Close() error {
 	}
 
 	return aof.file.Close()
+}
+
+// reads aof file, parse each line into operation structs, return slice of operations
+func (aof *AOF) ReadOperations() ([]Operation, error) {
+	file, err := os.Open(aof.fileName)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	
+	var operations []Operation
+
+	for {
+		result, err := protocol.Parse(reader)
+		if err != nil {
+			if err == io.EOF {
+				break // reached end of file
+			}
+			fmt.Println("Skipping corrupted entry: ", err)
+			continue
+		}
+
+		// type assert based on what Parse() returns
+		parts, ok := result.([]string)
+		if !ok || len(parts) == 0 {
+			continue
+		}
+
+		op := Operation{}
+		op.Type= parts[0]
+		if op.Type == "SET" && len(parts) >= 3 {
+			op.Key = parts[1]
+			op.Value = parts[2]
+		} else if op.Type == "DEL" && len(parts) >= 2 {
+			op.Key = parts[1]
+		}
+
+		operations = append(operations, op)
+	}
+
+	return operations, nil
 }

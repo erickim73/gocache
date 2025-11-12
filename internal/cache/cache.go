@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sync"
 	"time"
-
 	"github.com/erickim73/gocache/internal/lru"
 	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/pkg/protocol"
@@ -47,7 +46,7 @@ func (c *Cache) Set(key, value string, ttl time.Duration) error {
 	resp := protocol.EncodeArray([]string{"SET", key, value, ttl.String()})
 	err := c.aof.Append(resp)
 	if err != nil {
-		return fmt.Errorf("Error appending to aof: %v", err)
+		return fmt.Errorf("error appending to aof: %v", err)
 	}
 
 	// check if key exists
@@ -107,7 +106,7 @@ func (c *Cache) Delete(key string) error {
 	resp := protocol.EncodeArray([]string{"DEL", key})
 	err := c.aof.Append(resp)
 	if err != nil {
-		return fmt.Errorf("Error appending to resp: %v", err)
+		return fmt.Errorf("error appending to resp: %v", err)
 	}
 
 	item, exists := c.data[key]
@@ -123,4 +122,3 @@ func (c *Cache) Delete(key string) error {
 
 	return nil
 }
-
