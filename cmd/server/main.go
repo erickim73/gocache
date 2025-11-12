@@ -82,7 +82,10 @@ func main() {
 
 	fmt.Println("Listening on :6379...")
 
-	myCache := cache.New(1000)
+	myCache, err := cache.New(1000)
+	if err != nil {
+		fmt.Errorf("Error creating new cache: %v", err)
+	}
 
 	for {
 		// accept an incoming connection

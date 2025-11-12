@@ -1,9 +1,13 @@
 package cache
 
 import (
-	"sync" 
+	"fmt"
+	"sync"
 	"time"
+
 	"github.com/erickim73/gocache/internal/lru"
+	"github.com/erickim73/gocache/internal/persistence"
+	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 
@@ -17,18 +21,25 @@ type Cache struct {
 	data map[string]*CacheItem
 	lru *lru.LRU
 	maxSize int
+	aof *persistence.AOF
 	mu sync.RWMutex   // read write lock
 }
 
-func New(maxSize int) *Cache {	
+func New(maxSize int) (*Cache, error) {	
+	aof, err := persistence.NewAOF("aof", persistence.SyncEverySecond)
+	if err != nil {
+		return nil, err
+	}
+	
 	return &Cache{
 		data: make(map[string]*CacheItem),
 		lru: &lru.LRU{},
 		maxSize: maxSize,
-	}
+		aof: aof,
+	}, nil
 }
 
-func (c *Cache) Set(key, value string, ttl time.Duration) {
+func (c *Cache) Set(key, value string, ttl time.Duration) error {
 	c.mu.Lock() 		// exclusive access for writes
 	defer c.mu.Unlock()
 
@@ -59,6 +70,14 @@ func (c *Cache) Set(key, value string, ttl time.Duration) {
 			node: node,
 		}
 	}
+	
+	resp := protocol.EncodeArray([]string{"SET", key, value})
+	err := c.aof.Append(resp)
+	if err != nil {
+		return fmt.Errorf("Error appending to aof: %v", err)
+	}
+
+	return nil
 }
 
 func (c *Cache) Get(key string) (string, bool) {
@@ -79,17 +98,25 @@ func (c *Cache) Get(key string) (string, bool) {
 	return node.value, true
 }
 
-func (c *Cache) Delete(key string) {
+func (c *Cache) Delete(key string) error {
 	c.mu.Lock() 		// exclusive access for writes
 	defer c.mu.Unlock()
 
 	item, exists := c.data[key]
 
 	if !exists {
-		return 
+		return nil
 	}
 
 	c.lru.RemoveNode(item.node)
 	delete(c.data, key)	
+
+	resp := protocol.EncodeArray([]string{"DEL", key})
+	err := c.aof.Append(resp)
+	if err != nil {
+		return fmt.Errorf("Error appending to resp: %v", err)
+	}
+
+	return nil
 }
 

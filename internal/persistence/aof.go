@@ -5,7 +5,6 @@ import (
 	"os"
 	"fmt"
 	"time"
-	// "github.com/erickim73/gocache/pkg/protocol/encoder"
 )
 
 // Determines how often data is appended to AOF
@@ -44,7 +43,7 @@ func NewAOF (fileName string, policy SyncPolicy) (*AOF, error) {
 	return aof, nil
 }
 
-func (aof *AOF) append(data string) error {
+func (aof *AOF) Append(data string) error {
 	aof.mu.Lock()
 	defer aof.mu.Unlock()
 

@@ -7,7 +7,7 @@ import (
 )
 
 func TestSetAndGet(t *testing.T) {
-	cache := New(100)
+	cache, _ := New(100)
 
 	cache.Set("eric", "smart", 100 * time.Second)
 	result, exists := cache.Get("eric")
@@ -22,7 +22,7 @@ func TestSetAndGet(t *testing.T) {
 }
 
 func TestInvalidKey(t *testing.T) {
-	cache := New(100)
+	cache, _ := New(100)
 
 	cache.Set("eric", "smart", 100 * time.Second)
 	result, exists := cache.Get("aiden")
@@ -36,7 +36,7 @@ func TestInvalidKey(t *testing.T) {
 }
 
 func TestLRUEviction(t *testing.T) {
-	cache := New(3)
+	cache, _ := New(3)
 
 	cache.Set("A", "1", 0) // [A]
 	cache.Set("B", "2", 0) // [B, A]
