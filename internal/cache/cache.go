@@ -42,13 +42,6 @@ func (c *Cache) Set(key, value string, ttl time.Duration) error {
 	c.mu.Lock() 		// exclusive access for writes
 	defer c.mu.Unlock()
 
-	// log to aof
-	resp := protocol.EncodeArray([]string{"SET", key, value, ttl.String()})
-	err := c.aof.Append(resp)
-	if err != nil {
-		return fmt.Errorf("error appending to aof: %v", err)
-	}
-
 	// check if key exists
 	_, exists := c.data[key]
 
@@ -101,13 +94,6 @@ func (c *Cache) Get(key string) (string, bool) {
 func (c *Cache) Delete(key string) error {
 	c.mu.Lock() 		// exclusive access for writes
 	defer c.mu.Unlock()
-
-	// log to aof
-	resp := protocol.EncodeArray([]string{"DEL", key})
-	err := c.aof.Append(resp)
-	if err != nil {
-		return fmt.Errorf("error appending to resp: %v", err)
-	}
 
 	item, exists := c.data[key]
 

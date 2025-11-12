@@ -12,8 +12,8 @@ import (
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
-// handle client commands 
-func handleConnection(conn net.Conn, cache *cache.Cache) {
+// handle client commands and write to aof
+func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF) {
 	defer conn.Close()
 
 	// read from client
@@ -61,6 +61,14 @@ func handleConnection(conn net.Conn, cache *cache.Cache) {
 
 			cache.Set(key, value, ttl)
 
+			// write to aof
+			ttlSeconds := strconv.Itoa(int(ttl.Seconds()))
+			aofCommand := protocol.EncodeArray([]string{"SET", key, value, ttlSeconds})
+			err := aof.Append(aofCommand)
+			if err != nil {
+				fmt.Printf("Failed to write to AOF: %v\n", err)
+			}
+
 			conn.Write([]byte(protocol.EncodeSimpleString("OK")))
 			
 		} else if command == "GET" {
@@ -87,6 +95,13 @@ func handleConnection(conn net.Conn, cache *cache.Cache) {
 			key := resultSlice[1].(string)
 
 			cache.Delete(key)
+
+			aofCommand := protocol.EncodeArray([]string{"DEL", key})
+			err := aof.Append(aofCommand)
+			if err != nil {
+				fmt.Printf("Failed to write to AOF: %v\n", err)
+			}
+
 			conn.Write([]byte(protocol.EncodeSimpleString("OK")))
 		} else {
 			conn.Write([]byte(protocol.EncodeError("Unknown command " + command.(string))))
@@ -98,7 +113,7 @@ func handleConnection(conn net.Conn, cache *cache.Cache) {
 func recoverAOF(cache *cache.Cache, aof *persistence.AOF) error {
 	ops, err := aof.ReadOperations()
 	if err != nil {
-		return fmt.Errorf("Error reading operations from aov: %v", err)
+		return fmt.Errorf("error reading operations from aov: %v", err)
 	}
 
 	for _, op := range ops {
@@ -106,9 +121,14 @@ func recoverAOF(cache *cache.Cache, aof *persistence.AOF) error {
 			ttl := time.Duration(op.TTL) * time.Second
 			err := cache.Set(op.Key, op.Value, ttl)
 			if err != nil {
-				return fmt.Errorf("Error applying set operation on cache")
+				return fmt.Errorf("error applying set operation on cache")
 			}
-		} 
+		} else if op.Type == "DEL" {
+			err := cache.Delete(op.Key)
+			if err != nil {
+				return fmt.Errorf("error deleting key from cache")
+			}
+		}
 	}
 
 	return nil
@@ -119,14 +139,14 @@ func main() {
 	// create a cache
 	myCache, err := cache.New(1000)
 	if err != nil {
-		fmt.Errorf("Error creating new cache: %v", err)
+		fmt.Errorf("error creating new cache: %v", err)
 		return
 	}
 
 	// create aof
 	aof, err := persistence.NewAOF("cache.aof", persistence.SyncEverySecond)
 	if err != nil {
-		fmt.Println("Error creating new aof: %v", err)
+		fmt.Println("error creating new aof: %v", err)
 		return
 	}
 	defer aof.Close()
@@ -134,7 +154,7 @@ func main() {
 
 	err = recoverAOF(myCache, aof)
 	if err != nil {
-		fmt.Println("Error recovering from aof: %v", err)
+		fmt.Println("error recovering from aof: %v", err)
 		return
 	}
 	
@@ -159,6 +179,6 @@ func main() {
 		}
 
 		// handle connection in a separate goroutine
-		go handleConnection(conn, myCache)
+		go handleConnection(conn, myCache, aof)
 	}
 }
