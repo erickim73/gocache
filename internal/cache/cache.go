@@ -43,6 +43,13 @@ func (c *Cache) Set(key, value string, ttl time.Duration) error {
 	c.mu.Lock() 		// exclusive access for writes
 	defer c.mu.Unlock()
 
+	// log to aof
+	resp := protocol.EncodeArray([]string{"SET", key, value, ttl.String()})
+	err := c.aof.Append(resp)
+	if err != nil {
+		return fmt.Errorf("Error appending to aof: %v", err)
+	}
+
 	// check if key exists
 	_, exists := c.data[key]
 
@@ -70,12 +77,6 @@ func (c *Cache) Set(key, value string, ttl time.Duration) error {
 			node: node,
 		}
 	}
-	
-	resp := protocol.EncodeArray([]string{"SET", key, value})
-	err := c.aof.Append(resp)
-	if err != nil {
-		return fmt.Errorf("Error appending to aof: %v", err)
-	}
 
 	return nil
 }
@@ -102,6 +103,13 @@ func (c *Cache) Delete(key string) error {
 	c.mu.Lock() 		// exclusive access for writes
 	defer c.mu.Unlock()
 
+	// log to aof
+	resp := protocol.EncodeArray([]string{"DEL", key})
+	err := c.aof.Append(resp)
+	if err != nil {
+		return fmt.Errorf("Error appending to resp: %v", err)
+	}
+
 	item, exists := c.data[key]
 
 	if !exists {
@@ -111,11 +119,7 @@ func (c *Cache) Delete(key string) error {
 	c.lru.RemoveNode(item.node)
 	delete(c.data, key)	
 
-	resp := protocol.EncodeArray([]string{"DEL", key})
-	err := c.aof.Append(resp)
-	if err != nil {
-		return fmt.Errorf("Error appending to resp: %v", err)
-	}
+	
 
 	return nil
 }
