@@ -1,11 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"net"
-	"bufio"
-	"github.com/erickim73/gocache/pkg/protocol"
+	"strconv"
+	"time"
+
 	"github.com/erickim73/gocache/internal/cache"
+	"github.com/erickim73/gocache/internal/persistence"
+	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 func handleConnection(conn net.Conn, cache *cache.Cache) {
@@ -36,9 +40,28 @@ func handleConnection(conn net.Conn, cache *cache.Cache) {
 			key := resultSlice[1].(string)
 			value := resultSlice[2].(string)
 
-			cache.Set(key, value, 0)
+			ttl := time.Duration(0)
+
+			// if ttl provided as a 4th argument
+			if len(resultSlice) >= 4 {
+				seconds := resultSlice[3].(string)
+				ttlSeconds, err := strconv.Atoi(seconds)
+				if err != nil {
+					conn.Write([]byte(protocol.EncodeError("Couldn't convert seconds to a string")))
+					continue
+				}
+				ttl = time.Duration(ttlSeconds) * time.Second
+			}
+
+			if len(resultSlice) >= 5 {
+				conn.Write([]byte(protocol.EncodeError("Length of command doesn't match")))
+				continue
+			}
+
+			cache.Set(key, value, ttl)
 
 			conn.Write([]byte(protocol.EncodeSimpleString("OK")))
+			
 		} else if command == "GET" {
 			if len(resultSlice) != 2 {
 				conn.Write([]byte(protocol.EncodeError("Length of command doesn't match")))
@@ -68,6 +91,25 @@ func handleConnection(conn net.Conn, cache *cache.Cache) {
 			conn.Write([]byte(protocol.EncodeError("Unknown command " + command.(string))))
 		}
 	}
+}
+
+// reads aof and applies operations to cache
+func recoverAOF(cache *cache.Cache, aof *persistence.AOF) error {
+	ops, err := aof.ReadOperations()
+	if err != nil {
+		fmt.Errorf("Error reading operations from aov: %v", err)
+	}
+
+	for _, op := range ops {
+		if op.Type == "SET" {
+			err := cache.Set(op.Key, op.Value, op.TTL)
+			if err != nil {
+				fmt.Errorf("Error applying set operation on cache")
+			}
+		}
+	}
+
+	return nil
 
 }
 

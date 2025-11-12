@@ -3,10 +3,12 @@ package persistence
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
+	"strconv"
 	"sync"
 	"time"
-	"io"
+
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
@@ -31,6 +33,7 @@ type Operation struct {
 	Type string // SET or DEL
 	Key string
 	Value string
+	TTL time.Duration // ttl in sec; 0 means it lives forever
 }
 
 func NewAOF (fileName string, policy SyncPolicy) (*AOF, error) {
@@ -135,6 +138,13 @@ func (aof *AOF) ReadOperations() ([]Operation, error) {
 		if op.Type == "SET" && len(parts) >= 3 {
 			op.Key = parts[1]
 			op.Value = parts[2]
+
+			if len(parts) >= 4 {
+				ttlSeconds, err := strconv.ParseInt(parts[3], 10, 64)
+				if err != nil {
+					op.TTL = time.Duration(ttlSeconds)
+				}
+			}
 		} else if op.Type == "DEL" && len(parts) >= 2 {
 			op.Key = parts[1]
 		}
