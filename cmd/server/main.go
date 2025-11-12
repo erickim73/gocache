@@ -12,6 +12,7 @@ import (
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
+// handle client commands 
 func handleConnection(conn net.Conn, cache *cache.Cache) {
 	defer conn.Close()
 
@@ -32,7 +33,7 @@ func handleConnection(conn net.Conn, cache *cache.Cache) {
 		command := resultSlice[0]
 
 		if command == "SET" {
-			if len(resultSlice) != 3 {
+			if len(resultSlice) < 3 || len(resultSlice) > 4 {
 				conn.Write([]byte(protocol.EncodeError("Length of command doesn't match")))
 				continue
 			}
@@ -43,7 +44,7 @@ func handleConnection(conn net.Conn, cache *cache.Cache) {
 			ttl := time.Duration(0)
 
 			// if ttl provided as a 4th argument
-			if len(resultSlice) >= 4 {
+			if len(resultSlice) == 4 {
 				seconds := resultSlice[3].(string)
 				ttlSeconds, err := strconv.Atoi(seconds)
 				if err != nil {
@@ -97,16 +98,17 @@ func handleConnection(conn net.Conn, cache *cache.Cache) {
 func recoverAOF(cache *cache.Cache, aof *persistence.AOF) error {
 	ops, err := aof.ReadOperations()
 	if err != nil {
-		fmt.Errorf("Error reading operations from aov: %v", err)
+		return fmt.Errorf("Error reading operations from aov: %v", err)
 	}
 
 	for _, op := range ops {
 		if op.Type == "SET" {
-			err := cache.Set(op.Key, op.Value, op.TTL)
+			ttl := time.Duration(op.TTL) * time.Second
+			err := cache.Set(op.Key, op.Value, ttl)
 			if err != nil {
-				fmt.Errorf("Error applying set operation on cache")
+				return fmt.Errorf("Error applying set operation on cache")
 			}
-		}
+		} 
 	}
 
 	return nil
@@ -114,6 +116,28 @@ func recoverAOF(cache *cache.Cache, aof *persistence.AOF) error {
 }
 
 func main() {
+	// create a cache
+	myCache, err := cache.New(1000)
+	if err != nil {
+		fmt.Errorf("Error creating new cache: %v", err)
+		return
+	}
+
+	// create aof
+	aof, err := persistence.NewAOF("cache.aof", persistence.SyncEverySecond)
+	if err != nil {
+		fmt.Println("Error creating new aof: %v", err)
+		return
+	}
+	defer aof.Close()
+
+
+	err = recoverAOF(myCache, aof)
+	if err != nil {
+		fmt.Println("Error recovering from aof: %v", err)
+		return
+	}
+	
 	// create a tcp listener on port 6379
 	listener, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
@@ -124,10 +148,7 @@ func main() {
 
 	fmt.Println("Listening on :6379...")
 
-	myCache, err := cache.New(1000)
-	if err != nil {
-		fmt.Errorf("Error creating new cache: %v", err)
-	}
+	
 
 	for {
 		// accept an incoming connection
