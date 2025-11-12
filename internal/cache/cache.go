@@ -4,7 +4,6 @@ import (
 	"sync"
 	"time"
 	"github.com/erickim73/gocache/internal/lru"
-	"github.com/erickim73/gocache/internal/persistence"
 )
 
 
@@ -18,21 +17,14 @@ type Cache struct {
 	data map[string]*CacheItem
 	lru *lru.LRU
 	maxSize int
-	aof *persistence.AOF
 	mu sync.RWMutex   // read write lock
 }
 
 func New(maxSize int) (*Cache, error) {	
-	aof, err := persistence.NewAOF("aof", persistence.SyncEverySecond)
-	if err != nil {
-		return nil, err
-	}
-	
 	return &Cache{
 		data: make(map[string]*CacheItem),
 		lru: &lru.LRU{},
 		maxSize: maxSize,
-		aof: aof,
 	}, nil
 }
 

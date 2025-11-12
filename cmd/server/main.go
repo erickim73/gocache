@@ -54,11 +54,6 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF) {
 				ttl = time.Duration(ttlSeconds) * time.Second
 			}
 
-			if len(resultSlice) >= 5 {
-				conn.Write([]byte(protocol.EncodeError("Length of command doesn't match")))
-				continue
-			}
-
 			cache.Set(key, value, ttl)
 
 			// write to aof
@@ -146,7 +141,7 @@ func main() {
 	// create aof
 	aof, err := persistence.NewAOF("cache.aof", persistence.SyncEverySecond)
 	if err != nil {
-		fmt.Println("error creating new aof: %v", err)
+		fmt.Println("error creating new aof: %v\n", err)
 		return
 	}
 	defer aof.Close()
@@ -154,7 +149,7 @@ func main() {
 
 	err = recoverAOF(myCache, aof)
 	if err != nil {
-		fmt.Println("error recovering from aof: %v", err)
+		fmt.Println("error recovering from aof: %v\n", err)
 		return
 	}
 	
