@@ -21,6 +21,7 @@ type AOF struct {
 	file * os.File
 	mu sync.Mutex   // read write lock
 	policy SyncPolicy
+	done chan struct{}
 }
 
 func NewAOF (fileName string, policy SyncPolicy) (*AOF, error) {
@@ -33,6 +34,7 @@ func NewAOF (fileName string, policy SyncPolicy) (*AOF, error) {
 	aof := &AOF {
 		file: file,
 		policy: policy,
+		done: make(chan struct{}),
 	}
 
 	if policy == SyncEverySecond {
@@ -68,9 +70,24 @@ func (aof *AOF) periodicSync() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		aof.mu.Lock()
-		aof.file.Sync()
-		aof.mu.Unlock()
+	for {
+		select{
+		case <- ticker.C:
+			// sync
+			aof.mu.Lock()
+			aof.file.Sync()
+			aof.mu.Unlock()
+		case <- aof.done:
+			// got stop signal
+			return
+		}
 	}
+}
+
+func (aof *AOF) Close() error {
+	if aof.policy == SyncEverySecond {
+		close(aof.done)
+	}
+
+	return aof.file.Close()
 }
