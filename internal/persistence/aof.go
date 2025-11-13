@@ -33,7 +33,7 @@ type Operation struct {
 	Type string // SET or DEL
 	Key string
 	Value string
-	TTL time.Duration // ttl in sec; 0 means it lives forever
+	TTL int64 // ttl in sec; 0 means it lives forever
 }
 
 func NewAOF (fileName string, policy SyncPolicy) (*AOF, error) {
@@ -61,8 +61,7 @@ func (aof *AOF) Append(data string) error {
 	aof.mu.Lock()
 	defer aof.mu.Unlock()
 
-	line := data + "\n"
-	_, err := aof.file.Write([]byte(line))
+	_, err := aof.file.Write([]byte(data))
 	if err != nil {
 		return err
 	}
@@ -128,9 +127,19 @@ func (aof *AOF) ReadOperations() ([]Operation, error) {
 		}
 
 		// type assert based on what Parse() returns
-		parts, ok := result.([]string)
-		if !ok || len(parts) == 0 {
+		partsInterface, ok := result.([]interface{})
+		if !ok || len(partsInterface) == 0 {
 			continue
+		}
+
+		// convert []interface{} to []string
+		parts := make([]string, len(partsInterface))
+		for i, v := range partsInterface{
+			parts[i], ok = v.(string)
+			if !ok {
+				fmt.Printf("element %d is not a string\n", i)
+				break
+			}
 		}
 
 		op := Operation{}
@@ -141,8 +150,8 @@ func (aof *AOF) ReadOperations() ([]Operation, error) {
 
 			if len(parts) >= 4 {
 				ttlSeconds, err := strconv.ParseInt(parts[3], 10, 64)
-				if err != nil {
-					op.TTL = time.Duration(ttlSeconds)
+				if err == nil {
+					op.TTL = ttlSeconds
 				}
 			}
 		} else if op.Type == "DEL" && len(parts) >= 2 {
