@@ -23,7 +23,7 @@ type Cache struct {
 
 type SnapshotEntry struct {
 	Value string
-	expiresAt time.Time
+	ExpiresAt time.Time
 }
 
 func New(maxSize int) (*Cache, error) {	
@@ -110,7 +110,7 @@ func (c *Cache) Snapshot() map[string]SnapshotEntry {
 	for k, v := range c.data {
 		snapshot[k] = SnapshotEntry{
 			Value: v.value,
-			expiresAt: v.expiresAt,
+			ExpiresAt: v.expiresAt,
 		}
 	}
 	c.mu.Unlock()

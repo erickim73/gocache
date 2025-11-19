@@ -1,7 +1,7 @@
 package persistence
 
 import (
-	"github.com/erickim73/gocache/internal/cache"
+	"time"
 )
 
 
@@ -17,6 +17,16 @@ func (aof *AOF) rewriteAOF () (*AOF, error) {
 	// create a snapshot of the cache
 	snapshot := aof.cache.Snapshot()
 
+	// iterate over snapshot and write to tempFile
+	for key, entry := range snapshot {
+		if !entry.ExpiresAt.IsZero() {
+			ttl := entry.ExpiresAt.Sub(time.Now())
+			if ttl < 0 {
+				continue // skip expired items
+			}
+		}
+
+	}
+
 
 }
-
