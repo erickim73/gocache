@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"time"
 	"fmt"
+	"os"
 
 	"github.com/erickim73/gocache/pkg/protocol"
 )
@@ -23,13 +24,20 @@ func (aof *AOF) rewriteAOF () (error) {
 
 	// iterate over snapshot and write to tempFile
 	for key, entry := range snapshot {
-		if !entry.ExpiresAt.IsZero() {
-			ttl := entry.ExpiresAt.Sub(time.Now())
+		ttl := time.Duration(0)
+
+		// no expiration, TTL = 0
+		if entry.ExpiresAt.IsZero() {
+			ttl = 0
+		} else {
+			// has an expiration
+			ttl = entry.ExpiresAt.Sub(time.Now())
+
 			if ttl < 0 {
 				continue // skip expired items
 			}
 		}
-		ttl := entry.ExpiresAt.Sub(time.Now())
+		
 		ttlSeconds := strconv.Itoa(int(ttl.Seconds()))
 		aofCommand := protocol.EncodeArray([]string{"SET", key, entry.Value, ttlSeconds})
 		err := tempFile.Append(aofCommand)
@@ -38,5 +46,7 @@ func (aof *AOF) rewriteAOF () (error) {
 		}
 	}
 
-
+	// rename temp file to original
+	os.Rename(tempName, aof.fileName)
+	return nil
 }

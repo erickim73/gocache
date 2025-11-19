@@ -110,7 +110,7 @@ func recoverAOF(cache *cache.Cache, aof *persistence.AOF) error {
 	if err != nil {
 		return fmt.Errorf("error reading operations from aov: %v", err)
 	}
-	fmt.Printf("Operations to recover\n", ops)
+	fmt.Printf("Operations to recover %d\n", ops)
 	fmt.Printf("Found %d operations to recover\n", len(ops))
 
 	for _, op := range ops {
@@ -137,14 +137,14 @@ func main() {
 	// create a cache
 	myCache, err := cache.New(1000)
 	if err != nil {
-		fmt.Errorf("error creating new cache: %v", err)
+		fmt.Printf("error creating new cache: %v\n", err)
 		return
 	}
 
 	// create aof
 	aof, err := persistence.NewAOF("cache.aof", persistence.SyncEverySecond, myCache)
 	if err != nil {
-		fmt.Println("error creating new aof: %v\n", err)
+		fmt.Printf("error creating new aof: %v\n", err)
 		return
 	}
 	defer aof.Close()
@@ -152,19 +152,19 @@ func main() {
 
 	err = recoverAOF(myCache, aof)
 	if err != nil {
-		fmt.Println("error recovering from aof: %v\n", err)
+		fmt.Printf("error recovering from aof: %v\n", err)
 		return
 	}
 	
 	// create a tcp listener on port 6379
 	listener, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
-		fmt.Println("Error creating listener:", err)
+		fmt.Printf("Error creating listener: %v", err)
 		return
 	}
 	defer listener.Close()
 
-	fmt.Println("Listening on :6379...")
+	fmt.Printf("Listening on :6379...")
 
 	
 
@@ -172,7 +172,7 @@ func main() {
 		// accept an incoming connection
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Println("Error accepting connection:", err)
+			fmt.Printf("Error accepting connection: %v", err)
 			continue
 		}
 
