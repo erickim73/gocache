@@ -142,7 +142,7 @@ func main() {
 	}
 
 	// create aof
-	aof, err := persistence.NewAOF("cache.aof", persistence.SyncEverySecond)
+	aof, err := persistence.NewAOF("cache.aof", persistence.SyncEverySecond, myCache)
 	if err != nil {
 		fmt.Println("error creating new aof: %v\n", err)
 		return
