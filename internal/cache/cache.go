@@ -20,6 +20,12 @@ type Cache struct {
 	mu sync.RWMutex   // read write lock
 }
 
+
+type SnapshotEntry struct {
+	Value string
+	expiresAt time.Time
+}
+
 func New(maxSize int) (*Cache, error) {	
 	return &Cache{
 		data: make(map[string]*CacheItem),
@@ -94,7 +100,21 @@ func (c *Cache) Delete(key string) error {
 	c.lru.RemoveNode(item.node)
 	delete(c.data, key)	
 
-	
-
 	return nil
+}
+
+
+func (c *Cache) Snapshot() map[string]SnapshotEntry {
+	snapshot := make(map[string]SnapshotEntry)
+
+	c.mu.Lock()
+	for k, v := range c.data {
+		snapshot[k] = SnapshotEntry{
+			Value: v.value,
+			expiresAt: v.expiresAt,
+		}
+	}
+	c.mu.Unlock()
+
+	return snapshot
 }
