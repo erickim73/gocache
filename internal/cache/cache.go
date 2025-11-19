@@ -103,7 +103,6 @@ func (c *Cache) Delete(key string) error {
 	return nil
 }
 
-
 func (c *Cache) Snapshot() map[string]SnapshotEntry {
 	snapshot := make(map[string]SnapshotEntry)
 

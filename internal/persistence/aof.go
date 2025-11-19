@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 	"github.com/erickim73/gocache/pkg/protocol"
+	"github.com/erickim73/gocache/internal/cache"
 )
 
 // Determines how often data is appended to AOF
@@ -25,6 +26,7 @@ type AOF struct {
 	fileName string
 	mu sync.Mutex   // read write lock
 	policy SyncPolicy
+	cache *cache.Cache
 	done chan struct{}
 }
 
@@ -35,7 +37,7 @@ type Operation struct {
 	TTL int64 // ttl in sec; 0 means it lives forever
 }
 
-func NewAOF (fileName string, policy SyncPolicy) (*AOF, error) {
+func NewAOF (fileName string, policy SyncPolicy, cache *cache.Cache) (*AOF, error) {
 	// open file for read/write, create if it doesn't exist
 	file, err := os.OpenFile(fileName, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0644)
 	if err != nil {
@@ -46,6 +48,7 @@ func NewAOF (fileName string, policy SyncPolicy) (*AOF, error) {
 		file: file,
 		fileName: fileName,
 		policy: policy,
+		cache: cache,
 		done: make(chan struct{}),
 	}
 
