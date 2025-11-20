@@ -67,11 +67,12 @@ func (aof *AOF) rewriteAOF () (error) {
 		return fmt.Errorf("closing tempfile failed: %v", err)
 	}
 
+	// lock during file swap
+	aof.mu.Lock()
+	defer aof.mu.Unlock()
+
 	// save old file
 	oldFile := aof.file
-
-	// mark rewrite successful
-	success = true
 
 	// rename temp file to original
 	err = os.Rename(tempName, aof.fileName)
@@ -90,5 +91,7 @@ func (aof *AOF) rewriteAOF () (error) {
 	// close old file
 	oldFile.Close()
 
+	// mark rewrite successful
+	success = true
 	return nil
 }
