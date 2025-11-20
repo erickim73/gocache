@@ -19,6 +19,15 @@ func (aof *AOF) rewriteAOF () (error) {
 		return err
 	}
 
+	defer tempFile.file.Close()
+
+	success := false
+	defer func() {
+		if !success {
+			os.Remove(tempName)
+		}
+	}()
+
 	// create a snapshot of the cache
 	snapshot := aof.cache.Snapshot()
 
@@ -64,5 +73,7 @@ func (aof *AOF) rewriteAOF () (error) {
 		return fmt.Errorf("renaming file failed: %v", err)
 	}
 	aof.file = tempFile.file
+
+	success = true
 	return nil
 }
