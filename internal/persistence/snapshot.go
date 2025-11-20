@@ -72,7 +72,14 @@ func (aof *AOF) rewriteAOF () (error) {
 	if err != nil {
 		return fmt.Errorf("renaming file failed: %v", err)
 	}
-	aof.file = tempFile.file
+	
+	// reopen file so future writes append to new aof
+	newFile, err := os.OpenFile(aof.fileName, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to reopen new aof: %v", err)
+	}
+	
+	aof.file = newFile
 
 	success = true
 	return nil
