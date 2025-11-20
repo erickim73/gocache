@@ -14,14 +14,17 @@ import (
 func (aof *AOF) rewriteAOF () (error) {
 	// create a new temp aof file
 	tempName := aof.fileName + "_temp"
-	tempFile, err := os.OpenFile(tempName, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0644)
+	tempFile, err := os.OpenFile(tempName, os.O_CREATE | os.O_WRONLY | os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
 
 	success := false
 	defer func() {
-		tempFile.Close()
+		if tempFile != nil { 
+			// check if already closed
+			tempFile.Close()
+		}
 		if !success {
 			os.Remove(tempName)
 		}
