@@ -14,15 +14,14 @@ import (
 func (aof *AOF) rewriteAOF () (error) {
 	// create a new temp aof file
 	tempName := aof.fileName + "_temp"
-	tempFile, err := NewAOF(tempName, aof.policy, aof.cache)
+	tempFile, err := os.OpenFile(tempName, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0644)
 	if err != nil {
 		return err
 	}
 
-	defer tempFile.file.Close()
-
 	success := false
 	defer func() {
+		tempFile.Close()
 		if !success {
 			os.Remove(tempName)
 		}
@@ -64,6 +63,9 @@ func (aof *AOF) rewriteAOF () (error) {
 	// save old file
 	oldFile := aof.file
 
+	// mark rewrite successful
+	success = true
+
 	// rename temp file to original
 	err = os.Rename(tempName, aof.fileName)
 	if err != nil {
@@ -81,6 +83,5 @@ func (aof *AOF) rewriteAOF () (error) {
 	// close old file
 	oldFile.Close()
 
-	success = true
 	return nil
 }
