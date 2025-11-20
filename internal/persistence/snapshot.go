@@ -64,12 +64,6 @@ func (aof *AOF) rewriteAOF () (error) {
 	// save old file
 	oldFile := aof.file
 
-	// close temp file
-	err = tempFile.file.Close()
-	if err != nil {
-		return fmt.Errorf("closing file failed: %v", err)
-	}
-
 	// rename temp file to original
 	err = os.Rename(tempName, aof.fileName)
 	if err != nil {
