@@ -48,16 +48,23 @@ func (aof *AOF) rewriteAOF () (error) {
 		
 		ttlSeconds := strconv.Itoa(int(ttl.Seconds()))
 		aofCommand := protocol.EncodeArray([]string{"SET", key, entry.Value, ttlSeconds})
-		err := tempFile.Append(aofCommand)
+
+		// write directly to file
+		_, err := tempFile.Write([]byte(aofCommand))
 		if err != nil {
 			return fmt.Errorf("failed to write to temp AOF file: %v", err)
 		}
 	}
 
 	// ensure all writes in tempFile are flushed to disk
-	err = tempFile.file.Sync()
+	err = tempFile.Sync()
 	if err != nil {
 		return fmt.Errorf("fsync failed: %v", err)
+	}
+
+	err = tempFile.Close()
+	if err != nil {
+		return fmt.Errorf("closing tempfile failed: %v", err)
 	}
 
 	// save old file
