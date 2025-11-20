@@ -61,6 +61,9 @@ func (aof *AOF) rewriteAOF () (error) {
 		return fmt.Errorf("fsync failed: %v", err)
 	}
 
+	// save old file
+	oldFile := aof.file
+
 	// close temp file
 	err = tempFile.file.Close()
 	if err != nil {
@@ -80,6 +83,9 @@ func (aof *AOF) rewriteAOF () (error) {
 	}
 	
 	aof.file = newFile
+
+	// close old file
+	oldFile.Close()
 
 	success = true
 	return nil
