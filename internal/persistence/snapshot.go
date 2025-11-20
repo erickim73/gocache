@@ -52,10 +52,17 @@ func (aof *AOF) rewriteAOF () (error) {
 		return fmt.Errorf("fsync failed: %v", err)
 	}
 
+	// close temp file
+	err = tempFile.file.Close()
+	if err != nil {
+		return fmt.Errorf("closing file failed: %v", err)
+	}
 
 	// rename temp file to original
-	os.Rename(tempName, aof.fileName)
-	aof.file.Close()
+	err = os.Rename(tempName, aof.fileName)
+	if err != nil {
+		return fmt.Errorf("renaming file failed: %v", err)
+	}
 	aof.file = tempFile.file
 	return nil
 }
