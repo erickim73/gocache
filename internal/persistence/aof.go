@@ -22,7 +22,7 @@ const (
 )
 
 type AOF struct {
-	file * os.File
+	file *os.File
 	fileName string
 	mu sync.Mutex   // read write lock
 	policy SyncPolicy

@@ -42,11 +42,20 @@ func (aof *AOF) rewriteAOF () (error) {
 		aofCommand := protocol.EncodeArray([]string{"SET", key, entry.Value, ttlSeconds})
 		err := tempFile.Append(aofCommand)
 		if err != nil {
-			fmt.Printf("Failed to write to temp AOF file: %v\n", err)
+			return fmt.Errorf("failed to write to temp AOF file: %v", err)
 		}
 	}
 
+	// ensure all writes in tempFile are flushed to disk
+	err = tempFile.file.Sync()
+	if err != nil {
+		return fmt.Errorf("fsync failed: %v", err)
+	}
+
+
 	// rename temp file to original
 	os.Rename(tempName, aof.fileName)
+	aof.file.Close()
+	aof.file = tempFile.file
 	return nil
 }
