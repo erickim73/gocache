@@ -110,7 +110,6 @@ func recoverAOF(cache *cache.Cache, aof *persistence.AOF) error {
 	if err != nil {
 		return fmt.Errorf("error reading operations from aov: %v", err)
 	}
-	fmt.Printf("Operations to recover %d\n", ops)
 	fmt.Printf("Found %d operations to recover\n", len(ops))
 
 	for _, op := range ops {
@@ -142,7 +141,7 @@ func main() {
 	}
 
 	// create aof
-	aof, err := persistence.NewAOF("cache.aof", persistence.SyncEverySecond, myCache)
+	aof, err := persistence.NewAOF("cache.aof", persistence.SyncEverySecond, myCache, 100)
 	if err != nil {
 		fmt.Printf("error creating new aof: %v\n", err)
 		return

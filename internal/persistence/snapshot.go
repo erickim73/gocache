@@ -42,7 +42,7 @@ func (aof *AOF) rewriteAOF () (error) {
 			ttl = 0
 		} else {
 			// has an expiration
-			ttl = entry.ExpiresAt.Sub(time.Now())
+			ttl = time.Until(entry.ExpiresAt)
 
 			if ttl < 0 {
 				continue // skip expired items

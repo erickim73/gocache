@@ -28,6 +28,9 @@ type AOF struct {
 	policy SyncPolicy
 	cache *cache.Cache
 	done chan struct{}
+	opsSinceRewrite int64
+	rewriteThreshold int64
+	rewriting bool
 }
 
 type Operation struct {
@@ -37,7 +40,7 @@ type Operation struct {
 	TTL int64 // ttl in sec; 0 means it lives forever
 }
 
-func NewAOF (fileName string, policy SyncPolicy, cache *cache.Cache) (*AOF, error) {
+func NewAOF (fileName string, policy SyncPolicy, cache *cache.Cache, rewriteThreshold int64) (*AOF, error) {
 	// open file for read/write, create if it doesn't exist
 	file, err := os.OpenFile(fileName, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0644)
 	if err != nil {
@@ -50,6 +53,9 @@ func NewAOF (fileName string, policy SyncPolicy, cache *cache.Cache) (*AOF, erro
 		policy: policy,
 		cache: cache,
 		done: make(chan struct{}),
+		opsSinceRewrite: 0,
+		rewriteThreshold: rewriteThreshold,
+		rewriting: false,
 	}
 
 	if policy == SyncEverySecond {
