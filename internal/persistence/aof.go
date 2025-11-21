@@ -82,6 +82,12 @@ func (aof *AOF) Append(data string) error {
 		}
 	}
 
+	aof.opsSinceRewrite += 1
+
+	if aof.opsSinceRewrite > aof.rewriteThreshold {
+		aof.tryTriggerRewrite()
+	}
+
 	return nil
 }
 

@@ -94,7 +94,31 @@ func (aof *AOF) rewriteAOF () (error) {
 	// close old file
 	oldFile.Close()
 
+	// reset counter 
+	aof.opsSinceRewrite = 0
+
 	// mark rewrite successful
 	success = true
 	return nil
+}
+
+func (aof *AOF) tryTriggerRewrite() {
+	if aof.rewriting {
+		return
+	}
+
+	aof.rewriting = true
+
+	go func() {
+		err := aof.rewriteAOF()
+
+		aof.mu.Lock()
+		aof.rewriting = false
+		aof.mu.Unlock()
+		
+		if err != nil {
+			fmt.Println("rewrite failed: ", err)
+		}
+
+	}()
 }
