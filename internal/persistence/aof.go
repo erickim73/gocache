@@ -28,8 +28,8 @@ type AOF struct {
 	policy SyncPolicy
 	cache *cache.Cache
 	done chan struct{}
-	opsSinceRewrite int64
-	rewriteThreshold int64
+	growthFactor int64
+	lastRewriteSize int64
 	rewriting bool
 }
 
@@ -40,7 +40,7 @@ type Operation struct {
 	TTL int64 // ttl in sec; 0 means it lives forever
 }
 
-func NewAOF (fileName string, policy SyncPolicy, cache *cache.Cache, rewriteThreshold int64) (*AOF, error) {
+func NewAOF (fileName string, policy SyncPolicy, cache *cache.Cache, growthFactor int64) (*AOF, error) {
 	// open file for read/write, create if it doesn't exist
 	file, err := os.OpenFile(fileName, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0644)
 	if err != nil {
@@ -53,8 +53,8 @@ func NewAOF (fileName string, policy SyncPolicy, cache *cache.Cache, rewriteThre
 		policy: policy,
 		cache: cache,
 		done: make(chan struct{}),
-		opsSinceRewrite: 0,
-		rewriteThreshold: rewriteThreshold,
+		growthFactor: growthFactor,
+		lastRewriteSize: 0,
 		rewriting: false,
 	}
 
@@ -82,11 +82,8 @@ func (aof *AOF) Append(data string) error {
 		}
 	}
 
-	aof.opsSinceRewrite += 1
-
-	if aof.opsSinceRewrite > aof.rewriteThreshold {
-		aof.tryTriggerRewrite()
-	}
+	// check ratio trigger
+	aof.checkRewriteTrigger()
 
 	return nil
 }
