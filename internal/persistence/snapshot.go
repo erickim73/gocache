@@ -97,7 +97,6 @@ func (aof *AOF) rewriteAOF () (error) {
 	// update baseline size
 	info, _ := os.Stat(aof.fileName)
 	aof.lastRewriteSize = info.Size() 
-	aof.rewriting = false
 
 	// mark rewrite successful
 	success = true
@@ -125,30 +124,23 @@ func (aof *AOF) checkRewriteTrigger() {
 	// growth ratio
 	growthRatio := float64(currentSize) / float64(aof.lastRewriteSize)
 
+	
+	
 	if growthRatio > float64(aof.growthFactor) {
-		// trigger background rewrite
+		// set flag and launch rewrite
 		aof.rewriting = true
-		go aof.tryTriggerRewrite()
+		
+		go func() {
+			err := aof.rewriteAOF()
+
+			aof.mu.Lock()
+			aof.rewriting = false
+			aof.mu.Unlock()
+
+			if err != nil {
+				fmt.Println("rewrite failed: ", err)
+			}
+
+		}()
 	}
-}
-
-func (aof *AOF) tryTriggerRewrite() {
-	if aof.rewriting {
-		return
-	}
-
-	aof.rewriting = true
-
-	go func() {
-		err := aof.rewriteAOF()
-
-		aof.mu.Lock()
-		aof.rewriting = false
-		aof.mu.Unlock()
-
-		if err != nil {
-			fmt.Println("rewrite failed: ", err)
-		}
-
-	}()
 }
