@@ -9,6 +9,7 @@ import (
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/persistence"
+	"github.com/erickim73/gocache/internal/config"
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
@@ -143,6 +144,22 @@ func recoverAOF(cache *cache.Cache, aof *persistence.AOF, aofName string, snapsh
 }
 
 func main() {
+	// test loading config
+	cfg, err := config.LoadFromFile("config.yaml")
+	if err != nil {
+		fmt.Printf("Error loading from config: %v\n", err)
+		return
+	}
+
+	// print values to verify
+	fmt.Printf("Port: %d\n", cfg.Port)
+	fmt.Printf("MaxCacheSize: %d\n", cfg.MaxCacheSize)
+	fmt.Printf("AOFFileName: %s\n", cfg.AOFFileName)
+	fmt.Printf("SnapshotFileName: %s\n", cfg.SnapshotFileName)
+	fmt.Printf("SyncPolicy: %s\n", cfg.SyncPolicy)
+	fmt.Printf("SnapshotInterval: %v\n", cfg.SnapshotInterval)
+	fmt.Printf("GrowthFactor: %d\n", cfg.GrowthFactor)
+	
 	// create a cache
 	myCache, err := cache.New(1000)
 	if err != nil {
