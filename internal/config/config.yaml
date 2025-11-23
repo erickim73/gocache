@@ -1,0 +1,7 @@
+port: 6379
+max_cache_size: 1000
+aof_file: cache.aof
+snapshot_file: cache.rdb
+sync_policy: SyncEverySecond
+snapshot_interval_seconds: 300
+growth_factor: 2
