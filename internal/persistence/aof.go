@@ -119,9 +119,7 @@ func (aof *AOF) periodicSync() {
 }
 
 func (aof *AOF) Close() error {
-	if aof.policy == SyncEverySecond {
-		close(aof.done)
-	}
+	close(aof.done)
 
 	return aof.file.Close()
 }
