@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"gopkg.in/yaml.v3"
+	"github.com/erickim73/gocache/internal/persistence"
 )
 
 type yamlConfig struct {
@@ -27,7 +28,7 @@ type Config struct {
 	// persistence settings
 	AOFFileName string
 	SnapshotFileName string
-	SyncPolicy string // SyncAlways, SyncEverySecond, SyncNo
+	SyncPolicy string // always, everysecond, no
 	SnapshotInterval time.Duration
 	GrowthFactor int64
 }
@@ -38,7 +39,7 @@ func DefaultConfig() *Config {
 		MaxCacheSize: 1000,
 		AOFFileName: "cache.aof",
 		SnapshotFileName: "cache.rdb",
-		SyncPolicy: "SyncEverySecond",
+		SyncPolicy: "everysecond",
 		SnapshotInterval: 5 * time.Minute,
 		GrowthFactor: 2,
 	}
@@ -66,4 +67,17 @@ func LoadFromFile(fileName string) (*Config, error) {
 		SnapshotInterval: time.Duration(yc.SnapshotIntervalSeconds) * time.Second,
 		GrowthFactor: yc.GrowthFactor,
 	}, nil
+}
+
+func (c *Config) GetSyncPolicy() persistence.SyncPolicy {
+	switch c.SyncPolicy {
+	case "always":
+		return persistence.SyncAlways
+	case "everysecond":
+		return persistence.SyncEverySecond
+	case "no":
+		return persistence.SyncNo
+	default:
+		return persistence.SyncEverySecond
+	}
 }
