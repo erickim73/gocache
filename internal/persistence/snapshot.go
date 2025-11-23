@@ -11,9 +11,9 @@ import (
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
-func snapshotExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
+func SnapshotExists(name string) bool {
+	_, err := os.Stat(name)
+	return !os.IsNotExist(err)
 }
 
 func (aof *AOF) createSnapshot() error {
@@ -107,7 +107,7 @@ func (aof *AOF) createSnapshot() error {
 	return nil
 }
 
-func (aof *AOF) loadSnapshot() error {
+func (aof *AOF) LoadSnapshot() error {
 	snapshot, err := os.Open(aof.snapshotName)
 	if err != nil {
 		return fmt.Errorf("failed to open snapshot: %v", err)

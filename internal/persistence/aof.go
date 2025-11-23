@@ -42,6 +42,11 @@ type Operation struct {
 	TTL int64 // ttl in sec; 0 means it lives forever
 }
 
+func AofExists(fileName string) bool {
+	_, err := os.Stat(fileName)
+	return !os.IsNotExist(err)
+}
+
 func NewAOF (fileName string, snapshotName string, policy SyncPolicy, cache *cache.Cache, growthFactor int64) (*AOF, error) {
 	// open file for read/write, create if it doesn't exist
 	file, err := os.OpenFile(fileName, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0644)
