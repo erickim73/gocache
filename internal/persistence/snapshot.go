@@ -16,7 +16,7 @@ func SnapshotExists(name string) bool {
 	return !os.IsNotExist(err)
 }
 
-func (aof *AOF) createSnapshot() error {
+func (aof *AOF) CreateSnapshot() error {
 	// create a temp snapshot file
 	tempName := aof.snapshotName + ".temp.rdb"
 	tempFile, err := os.OpenFile(tempName, os.O_CREATE | os.O_WRONLY | os.O_TRUNC, 0644)
@@ -155,4 +155,26 @@ func (aof *AOF) LoadSnapshot() error {
 	}
 
 	return nil
+}
+
+func (aof *AOF) checkSnapshotTrigger() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <- ticker.C:
+			// create snapshot
+			err := aof.CreateSnapshot()
+			if err != nil {
+				fmt.Println("Snapshot error: ", err)
+			} else {
+				fmt.Println("Snapshot created")
+			}
+		case <- aof.done:
+			// stop when aof is closed
+			return
+		}
+
+	}
 }

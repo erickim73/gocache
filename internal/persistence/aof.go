@@ -70,6 +70,9 @@ func NewAOF (fileName string, snapshotName string, policy SyncPolicy, cache *cac
 		go aof.periodicSync()
 	}
 
+	// start periodic snapshot goroutine
+	go aof.checkSnapshotTrigger()
+
 	return aof, nil
 }
 
