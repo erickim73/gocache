@@ -119,7 +119,7 @@ func recoverAOF(cache *cache.Cache, aof *persistence.AOF, aofName string, snapsh
 		if err != nil {
 			return fmt.Errorf("error reading operations from aov: %v", err)
 		}
-		fmt.Printf("Found %d operations to recover\n", len(ops))
+		fmt.Printf("Found %d operations from aof to recover\n", len(ops))
 
 		for _, op := range ops {
 			if op.Type == "SET" {
