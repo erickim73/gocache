@@ -1,11 +1,12 @@
 package config
 
 import (
-	"time"
+	"flag"
 	"os"
+	"time"
 
-	"gopkg.in/yaml.v3"
 	"github.com/erickim73/gocache/internal/persistence"
+	"gopkg.in/yaml.v3"
 )
 
 type yamlConfig struct {
@@ -80,4 +81,31 @@ func (c *Config) GetSyncPolicy() persistence.SyncPolicy {
 	default:
 		return persistence.SyncEverySecond
 	}
+}
+
+func ParseFlags(cfg *Config) string {
+	// config file path flag
+	configFile := flag.String("config", "config.yaml", "Path to config file")
+
+	// server flags
+	flag.IntVar(&cfg.Port, "port", cfg.Port, "Server port")
+
+	// cache flags
+	flag.IntVar(&cfg.MaxCacheSize, "max-size", cfg.MaxCacheSize, "Maximum cache size")
+
+	// persistence flags
+	flag.StringVar(&cfg.AOFFileName, "aof-file", cfg.AOFFileName, "AOF File path")
+	flag.StringVar(&cfg.SnapshotFileName, "snapshot-file", cfg.SnapshotFileName, "Snapshot file path")
+	flag.StringVar(&cfg.SyncPolicy, "sync-policy", cfg.SyncPolicy, "Sync policy: always, everysecond, no")
+	flag.Int64Var(&cfg.GrowthFactor, "growth-factor", cfg.GrowthFactor, "AOF rewrite growth factor")
+
+	// snapshot interval
+	snapshotSeconds := flag.Int("snapshot-interval", int(cfg.SnapshotInterval.Seconds()), "Snapshot interval in seconds")
+
+	flag.Parse()
+
+	// convert snapshot seconds to duration
+	cfg.SnapshotInterval = time.Duration(*snapshotSeconds) * time.Second
+
+	return *configFile
 }
