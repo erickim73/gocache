@@ -11,6 +11,11 @@ import (
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
+func snapshotExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 func (aof *AOF) createSnapshot() error {
 	// create a temp snapshot file
 	tempName := aof.snapshotName + ".temp.rdb"

@@ -106,6 +106,8 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF) {
 
 // reads aof and applies operations to cache
 func recoverAOF(cache *cache.Cache, aof *persistence.AOF) error {
+	
+	
 	ops, err := aof.ReadOperations()
 	if err != nil {
 		return fmt.Errorf("error reading operations from aov: %v", err)
