@@ -135,7 +135,7 @@ func recoverAOF(cache *cache.Cache, aof *persistence.AOF, aofName string, snapsh
 				}
 			}
 		}
-		fmt.Printf("Successfully recovered %d operations\n", len(ops))
+		fmt.Printf("Successfully recovered %d operations from aof\n", len(ops))
 	}
 
 	return nil
