@@ -2,8 +2,9 @@ package config
 
 import (
 	"time"
+	"os"
 
-	// "gopkg.in/yaml.v3"
+	"gopkg.in/yaml.v3"
 )
 
 type yamlConfig struct {
@@ -41,4 +42,28 @@ func DefaultConfig() *Config {
 		SnapshotInterval: 5 * time.Minute,
 		GrowthFactor: 2,
 	}
+}
+
+func LoadFromFile(fileName string) (*Config, error) {
+	data, err := os.ReadFile(fileName)
+	if err != nil {
+		return nil, err
+	}
+
+	var yc yamlConfig
+	err = yaml.Unmarshal(data, &yc)
+	if err != nil {
+		return nil, err
+	}
+
+	// convert to config struct
+	return &Config{
+		Port: yc.Port,
+		MaxCacheSize: yc.MaxCacheSize,
+		AOFFileName: yc.AOFFIleName,
+		SnapshotFileName: yc.SnapshotFileName,
+		SyncPolicy: yc.SyncPolicy,
+		SnapshotInterval: time.Duration(yc.SnapshotIntervalSeconds) * time.Second,
+		GrowthFactor: yc.GrowthFactor,
+	}, nil
 }
