@@ -18,7 +18,7 @@ type yamlConfig struct {
 
 type Config struct {
 	// server settings
-	port int
+	Port int
 
 	// cache settings
 	MaxCacheSize int
@@ -29,4 +29,16 @@ type Config struct {
 	SyncPolicy string // SyncAlways, SyncEverySecond, SyncNo
 	SnapshotInterval time.Duration
 	GrowthFactor int64
+}
+
+func DefaultConfig() *Config {
+	return &Config {
+		Port: 6379,
+		MaxCacheSize: 1000,
+		AOFFileName: "cache.aof",
+		SnapshotFileName: "cache.rdb",
+		SyncPolicy: "SyncEverySecond",
+		SnapshotInterval: 5 * time.Minute,
+		GrowthFactor: 2,
+	}
 }
