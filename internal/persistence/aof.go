@@ -25,6 +25,7 @@ const (
 type AOF struct {
 	file *os.File
 	fileName string
+	snapshotName string
 	mu sync.Mutex   // read write lock
 	policy SyncPolicy
 	cache *cache.Cache
@@ -41,7 +42,7 @@ type Operation struct {
 	TTL int64 // ttl in sec; 0 means it lives forever
 }
 
-func NewAOF (fileName string, policy SyncPolicy, cache *cache.Cache, growthFactor int64) (*AOF, error) {
+func NewAOF (fileName string, snapshotName string, policy SyncPolicy, cache *cache.Cache, growthFactor int64) (*AOF, error) {
 	// open file for read/write, create if it doesn't exist
 	file, err := os.OpenFile(fileName, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0644)
 	if err != nil {
@@ -51,6 +52,7 @@ func NewAOF (fileName string, policy SyncPolicy, cache *cache.Cache, growthFacto
 	aof := &AOF {
 		file: file,
 		fileName: fileName,
+		snapshotName: snapshotName,
 		policy: policy,
 		cache: cache,
 		done: make(chan struct{}),
