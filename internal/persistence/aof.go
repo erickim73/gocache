@@ -139,7 +139,7 @@ func (aof *AOF) ReadOperations() ([]Operation, error) {
 			fmt.Println("Skipping corrupted entry: ", err)
 			continue
 		}
-
+	
 		// type assert based on what Parse() returns
 		partsInterface, ok := result.([]interface{})
 		if !ok || len(partsInterface) == 0 {
@@ -179,7 +179,7 @@ func (aof *AOF) ReadOperations() ([]Operation, error) {
 }
 
 
-func (aof *AOF) rewriteAOF () (error) {
+func (aof *AOF) rewriteAOF () error {
 	// create a new temp aof file
 	tempName := aof.fileName + "_temp"
 	tempFile, err := os.OpenFile(tempName, os.O_CREATE | os.O_WRONLY | os.O_TRUNC, 0644)

@@ -1,15 +1,17 @@
 package persistence
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"time"
-	
+
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
-func (aof *AOF) createSnapshot() (error) {
+func (aof *AOF) createSnapshot() error {
 	// create a temp snapshot file
 	tempName := aof.snapshotName + ".temp.rdb"
 	tempFile, err := os.OpenFile(tempName, os.O_CREATE | os.O_WRONLY | os.O_TRUNC, 0644)
@@ -97,5 +99,55 @@ func (aof *AOF) createSnapshot() (error) {
 
 	// mark rewrite successful
 	success = true
+	return nil
+}
+
+func (aof *AOF) loadSnapshot() error {
+	snapshot, err := os.Open(aof.snapshotName)
+	if err != nil {
+		return fmt.Errorf("failed to open snapshot: %v", err)
+	}
+	defer snapshot.Close()
+
+	reader := bufio.NewReader(snapshot)
+
+	for {
+		result, err := protocol.Parse(reader)
+		if err != nil {
+			if err == io.EOF {
+				break // reached end of file
+			}
+			fmt.Println("Skipping corrupted entry: ", err)
+			continue
+		}
+
+		// type assert based on what Parse() returns
+		partsInterface, ok := result.([]interface{})
+		if !ok || len(partsInterface) == 0 {
+			continue
+		}
+
+		// convert []interface{} to []string
+		parts := make([]string, len(partsInterface))
+		for i, v := range partsInterface{
+			parts[i], ok = v.(string)
+			if !ok {
+				fmt.Printf("element %d is not a string\n", i)
+				break
+			}
+		}
+
+		if parts[0] == "SET" && len(parts) >= 3 {
+			ttl := time.Duration(0)
+			if len(parts) >= 4 {
+				ttlSeconds, err := strconv.ParseInt(parts[3], 10, 64)
+				if err == nil {
+					ttl = time.Duration(ttlSeconds) * time.Second
+				}
+			}
+			aof.cache.Set(parts[1], parts[2], ttl)
+		}
+	}
+
 	return nil
 }
