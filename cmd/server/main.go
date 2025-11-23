@@ -144,14 +144,24 @@ func recoverAOF(cache *cache.Cache, aof *persistence.AOF, aofName string, snapsh
 }
 
 func main() {
-	// test loading config
-	cfg, err := config.LoadFromFile("config.yaml")
+	// load defaults
+	cfg := config.DefaultConfig()
+
+	// parse flags
+	configFile := config.ParseFlags(cfg)
+
+	// load config file
+	fileCfg, err := config.LoadFromFile(configFile)
 	if err != nil {
-		fmt.Printf("Error loading from config: %v\n", err)
-		return
+		fmt.Printf("Could not load config file '%s', using defaults: %v\n", configFile, err)
+	} else {
+		cfg = fileCfg
+		//reparse flags to override file values
+		config.ParseFlags(cfg)
 	}
 
 	// print values to verify
+	fmt.Printf("Starting server with config:\n")
 	fmt.Printf("Port: %d\n", cfg.Port)
 	fmt.Printf("MaxCacheSize: %d\n", cfg.MaxCacheSize)
 	fmt.Printf("AOFFileName: %s\n", cfg.AOFFileName)
@@ -161,14 +171,20 @@ func main() {
 	fmt.Printf("GrowthFactor: %d\n", cfg.GrowthFactor)
 	
 	// create a cache
-	myCache, err := cache.New(1000)
+	myCache, err := cache.New(cfg.MaxCacheSize)
 	if err != nil {
 		fmt.Printf("error creating new cache: %v\n", err)
 		return
 	}
 
 	// create aof
-	aof, err := persistence.NewAOF("cache.aof", "cache.rdb", persistence.SyncEverySecond, myCache, 100)
+	aof, err := persistence.NewAOF(
+		cfg.AOFFileName,
+		cfg.SnapshotFileName,
+		cfg.GetSyncPolicy(),
+		myCache, 
+		cfg.GrowthFactor,
+	)
 	if err != nil {
 		fmt.Printf("error creating new aof: %v\n", err)
 		return
