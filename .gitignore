@@ -1,0 +1,2 @@
+cmd/server/cache.rdb
+cmd/server/cache.aof
