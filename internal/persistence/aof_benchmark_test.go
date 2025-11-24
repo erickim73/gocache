@@ -33,3 +33,13 @@ func cleanupBenchmark(aof *AOF) {
 	os.Remove(snapshotName)
 }
 
+func BenchmarkSetNoPersistence(b *testing.B) {
+	c, _ := cache.New(100000)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := fmt.Sprintf("key%d", i)
+		c.Set(key, "value", 0)
+	}
+}
+
