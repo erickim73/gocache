@@ -156,9 +156,10 @@ func main() {
 		fmt.Printf("Could not load config file '%s', using defaults: %v\n", configFile, err)
 	} else {
 		cfg = fileCfg
-		//reparse flags to override file values
-		config.ParseFlags(cfg)
 	}
+
+	// apply flags after loading file
+	config.ApplyFlags(cfg)
 
 	// print values to verify
 	fmt.Printf("Starting server with config:\n")
@@ -191,22 +192,23 @@ func main() {
 	}
 	defer aof.Close()
 
-
-	err = recoverAOF(myCache, aof, "cache.aof", "cache.rdb")
+	// recovery
+	err = recoverAOF(myCache, aof, cfg.AOFFileName, cfg.SnapshotFileName)
 	if err != nil {
 		fmt.Printf("error recovering from aof: %v\n", err)
 		return
 	}
 	
 	// create a tcp listener on port 6379
-	listener, err := net.Listen("tcp", "0.0.0.0:6379")
+	address := fmt.Sprintf("0.0.0.0:%d", cfg.Port)
+	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		fmt.Printf("Error creating listener: %v", err)
 		return
 	}
 	defer listener.Close()
 
-	fmt.Printf("Listening on :6379...")
+	fmt.Printf("Listening on :%d...", cfg.Port)
 
 	
 

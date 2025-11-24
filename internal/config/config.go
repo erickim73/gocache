@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
@@ -108,4 +109,27 @@ func ParseFlags(cfg *Config) string {
 	cfg.SnapshotInterval = time.Duration(*snapshotSeconds) * time.Second
 
 	return *configFile
+}
+
+func ApplyFlags(cfg *Config) {
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "port":
+			fmt.Sscanf(f.Value.String(), "%d", &cfg.Port)
+		case "max-size":
+			fmt.Sscanf(f.Value.String(), "%d", &cfg.MaxCacheSize)
+		case "aof-file":
+			cfg.AOFFileName = f.Value.String()
+		case "snapshot-file":
+			cfg.SnapshotFileName = f.Value.String()
+		case "sync-policy":
+			cfg.SyncPolicy = f.Value.String()
+		case "growth-factor":
+			fmt.Sscanf(f.Value.String(), "%d", &cfg.GrowthFactor)
+		case "snapshot-interval":
+			var seconds int
+			fmt.Sscanf(f.Value.String(), "%d", &seconds)
+			cfg.SnapshotInterval = time.Duration(seconds) * time.Second
+		}
+	})
 }
