@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/erickim73/gocache/internal/cache"
-	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/internal/config"
+	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
@@ -25,7 +25,7 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF) {
 			fmt.Println(err)
 			return
 		}
-		
+
 		resultSlice, ok := result.([]interface{})
 		if !ok {
 			fmt.Println("Error: result is not a slice")
@@ -66,7 +66,7 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF) {
 			}
 
 			conn.Write([]byte(protocol.EncodeSimpleString("OK")))
-			
+
 		} else if command == "GET" {
 			if len(resultSlice) != 2 {
 				conn.Write([]byte(protocol.EncodeError("Length of command doesn't match")))
@@ -170,7 +170,7 @@ func main() {
 	fmt.Printf("SyncPolicy: %s\n", cfg.SyncPolicy)
 	fmt.Printf("SnapshotInterval: %v\n", cfg.SnapshotInterval)
 	fmt.Printf("GrowthFactor: %d\n", cfg.GrowthFactor)
-	
+
 	// create a cache
 	myCache, err := cache.New(cfg.MaxCacheSize)
 	if err != nil {
@@ -183,7 +183,7 @@ func main() {
 		cfg.AOFFileName,
 		cfg.SnapshotFileName,
 		cfg.GetSyncPolicy(),
-		myCache, 
+		myCache,
 		cfg.GrowthFactor,
 	)
 	if err != nil {
@@ -198,7 +198,7 @@ func main() {
 		fmt.Printf("error recovering from aof: %v\n", err)
 		return
 	}
-	
+
 	// create a tcp listener on port 6379
 	address := fmt.Sprintf("0.0.0.0:%d", cfg.Port)
 	listener, err := net.Listen("tcp", address)
@@ -209,8 +209,6 @@ func main() {
 	defer listener.Close()
 
 	fmt.Printf("Listening on :%d...", cfg.Port)
-
-	
 
 	for {
 		// accept an incoming connection

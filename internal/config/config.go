@@ -11,13 +11,13 @@ import (
 )
 
 type yamlConfig struct {
-	Port int `yaml:"port"`
-	MaxCacheSize int `yaml:"max_cache_size"`
-	AOFFIleName string `yaml:"aof_file"`
-	SnapshotFileName string `yaml:"snapshot_file"`
-	SyncPolicy string `yaml:"sync_policy"`
-	SnapshotIntervalSeconds int `yaml:"snapshot_interval_seconds"`
-	GrowthFactor int64 `yaml:"growth_factor"`
+	Port                    int    `yaml:"port"`
+	MaxCacheSize            int    `yaml:"max_cache_size"`
+	AOFFIleName             string `yaml:"aof_file"`
+	SnapshotFileName        string `yaml:"snapshot_file"`
+	SyncPolicy              string `yaml:"sync_policy"`
+	SnapshotIntervalSeconds int    `yaml:"snapshot_interval_seconds"`
+	GrowthFactor            int64  `yaml:"growth_factor"`
 }
 
 type Config struct {
@@ -28,22 +28,22 @@ type Config struct {
 	MaxCacheSize int
 
 	// persistence settings
-	AOFFileName string
+	AOFFileName      string
 	SnapshotFileName string
-	SyncPolicy string // always, everysecond, no
+	SyncPolicy       string // always, everysecond, no
 	SnapshotInterval time.Duration
-	GrowthFactor int64
+	GrowthFactor     int64
 }
 
 func DefaultConfig() *Config {
-	return &Config {
-		Port: 6379,
-		MaxCacheSize: 1000,
-		AOFFileName: "cache.aof",
+	return &Config{
+		Port:             6379,
+		MaxCacheSize:     1000,
+		AOFFileName:      "cache.aof",
 		SnapshotFileName: "cache.rdb",
-		SyncPolicy: "everysecond",
+		SyncPolicy:       "everysecond",
 		SnapshotInterval: 5 * time.Minute,
-		GrowthFactor: 2,
+		GrowthFactor:     2,
 	}
 }
 
@@ -61,13 +61,13 @@ func LoadFromFile(fileName string) (*Config, error) {
 
 	// convert to config struct
 	return &Config{
-		Port: yc.Port,
-		MaxCacheSize: yc.MaxCacheSize,
-		AOFFileName: yc.AOFFIleName,
+		Port:             yc.Port,
+		MaxCacheSize:     yc.MaxCacheSize,
+		AOFFileName:      yc.AOFFIleName,
 		SnapshotFileName: yc.SnapshotFileName,
-		SyncPolicy: yc.SyncPolicy,
+		SyncPolicy:       yc.SyncPolicy,
 		SnapshotInterval: time.Duration(yc.SnapshotIntervalSeconds) * time.Second,
-		GrowthFactor: yc.GrowthFactor,
+		GrowthFactor:     yc.GrowthFactor,
 	}, nil
 }
 
