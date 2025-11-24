@@ -45,7 +45,7 @@ func BenchmarkSetNoPersistence(b *testing.B) {
 
 func benchmarkSetSyncNo(b *testing.B) {
 	c, aof := setupBenchmark(b, SyncNo)
-	defer cleanupBenchmark()
+	defer cleanupBenchmark(aof)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -57,7 +57,7 @@ func benchmarkSetSyncNo(b *testing.B) {
 
 func benchmarkSetSyncEverySecond(b *testing.B) {
 	c, aof := setupBenchmark(b, SyncEverySecond)
-	defer cleanupBenchmark()
+	defer cleanupBenchmark(aof)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -69,7 +69,7 @@ func benchmarkSetSyncEverySecond(b *testing.B) {
 
 func benchmarkSetSyncAlways(b *testing.B) {
 	c, aof := setupBenchmark(b, SyncAlways)
-	defer cleanupBenchmark()
+	defer cleanupBenchmark(aof)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
