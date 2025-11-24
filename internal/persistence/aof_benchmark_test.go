@@ -43,3 +43,15 @@ func BenchmarkSetNoPersistence(b *testing.B) {
 	}
 }
 
+func benchmarkSetSyncNo(b *testing.B) {
+	c, aof := setupBenchmark(b, SyncNo)
+	defer cleanupBenchmark()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := fmt.Sprintf("key%d", i)
+		c.Set(key, "value", 0)
+		aof.Append(fmt.Sprintf("Set %s value\r\n", key))
+	}
+}
+
