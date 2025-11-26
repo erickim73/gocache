@@ -9,6 +9,12 @@ import (
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
+// operation type constants
+const (
+	OpSet = "SET"
+	OpDelete = "DELETE"
+)
+
 type SyncRequest struct {
 	FollowerID string //unique id of follower
 	LastSeqNum int64 // last sequence number received (for reconnection)
