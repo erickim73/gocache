@@ -42,6 +42,10 @@ type HeartbeatCommand struct {
 }
 
 func EncodeSyncRequest(req *SyncRequest) ([]byte, error) {
+	if req == nil {
+		return nil, errors.New("request cannot be nil")
+	}
+	
 	command := protocol.EncodeArray([]interface{}{
 		CmdSync, 
 		req.FollowerID, 
