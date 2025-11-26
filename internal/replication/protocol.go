@@ -17,3 +17,7 @@ type ReplicateCommand struct {
 	TTL time.Time
 }
 
+type HeartBeat struct {
+	SeqNum int64
+	NodeID string
+}
