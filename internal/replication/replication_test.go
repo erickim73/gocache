@@ -65,3 +65,26 @@ func TestReplicateCommandRoundTrip(t *testing.T) {
 		t.Errorf("Delete command Value should be empty, got %s", decoded2.Value)
 	}
 }
+
+func TestHeartbeatCommandRoundTrip(t *testing.T) {
+	HeartbeatCmd := &HeartbeatCommand{
+		SeqNum: 44, 
+		NodeID: "101",
+	}
+
+	encoded, err := EncodeHeartbeatCommand(HeartbeatCmd)
+	if err != nil {
+		t.Fatalf("Error Encoding Heartbeat Command: %v", err)
+	}
+	decoded, err := DecodeHeartbeatCommand(encoded)
+	if err != nil {
+		t.Fatalf("Error Decoding Heartbeat Command: %v", err)
+	}
+
+	if decoded.SeqNum != 44 {
+		t.Errorf("SeqNum should be 42, got %d", decoded.SeqNum)
+	}
+	if decoded.NodeID != "101" {
+		t.Errorf("NodeID should be 42, got %s", decoded.NodeID)
+	}
+}
