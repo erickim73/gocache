@@ -35,14 +35,14 @@ type ReplicateCommand struct {
 	TTL int64
 }
 
-type HeartBeat struct {
+type Heartbeat struct {
 	SeqNum int64
 	NodeID string
 }
 
 func EncodeSyncRequest(req *SyncRequest) []byte {
 	lastSeqNum := strconv.FormatInt(req.LastSeqNum, 10)
-	command := protocol.EncodeArray([]string{"SYNC", req.FollowerID, lastSeqNum})
+	command := protocol.EncodeArray([]interface{}{"SYNC", req.FollowerID, lastSeqNum})
 
 	return []byte(command)
 }
