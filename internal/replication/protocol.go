@@ -15,6 +15,13 @@ const (
 	OpDelete = "DELETE"
 )
 
+// command type constants
+const (
+	CmdSync = "SYNC"
+	CmdReplicate = "REPLICATE"
+	CmdHeartbeat = "HEARTBEAT"
+)
+
 type SyncRequest struct {
 	FollowerID string //unique id of follower
 	LastSeqNum int64 // last sequence number received (for reconnection)
