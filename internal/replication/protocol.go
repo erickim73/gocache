@@ -102,6 +102,10 @@ func DecodeSyncRequest(data []byte) (*SyncRequest, error) {
 }
 
 func EncodeReplicateCommand(comm *ReplicateCommand) ([]byte, error) {
+	if comm == nil {
+		return nil, errors.New("command cannot be nil")
+	}
+	
 	if comm.Operation == OpSet {
 		command := protocol.EncodeArray([]interface{}{
 			CmdReplicate,
