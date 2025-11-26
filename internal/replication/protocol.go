@@ -41,16 +41,16 @@ type HeartbeatCommand struct {
 	NodeID string
 }
 
-func EncodeSyncRequest(req *SyncRequest) []byte {
+func EncodeSyncRequest(req *SyncRequest) ([]byte, error) {
 	command := protocol.EncodeArray([]interface{}{
 		CmdSync, 
 		req.FollowerID, 
 		req.LastSeqNum,
 	})
 
-	return []byte(command)
+	return []byte(command), nil
 }
-func DecodeSyncRequest(data []byte) (interface{}, error) {
+func DecodeSyncRequest(data []byte) (*SyncRequest, error) {
 	reader := bufio.NewReader(bytes.NewReader(data))
 	
 	value, err := protocol.Parse(reader)
@@ -121,7 +121,7 @@ func EncodeReplicateCommand(comm *ReplicateCommand) ([]byte, error) {
 	return nil, fmt.Errorf("invalid operation: %s", comm.Operation)
 }
 
-func DecodeReplicateCommand(data []byte) (interface{}, error) {
+func DecodeReplicateCommand(data []byte) (*ReplicateCommand, error) {
 	reader := bufio.NewReader(bytes.NewReader(data))
 
 	parsed, err := protocol.Parse(reader)
@@ -202,17 +202,17 @@ func DecodeReplicateCommand(data []byte) (interface{}, error) {
 	}, nil
 }
 
-func EncodeHeartbeatCommand(req *HeartbeatCommand) []byte {
+func EncodeHeartbeatCommand(req *HeartbeatCommand) ([]byte, error) {
 	command := protocol.EncodeArray([]interface{}{
 		CmdHeartbeat,
 		req.SeqNum,
 		req.NodeID,
 	})
 
-	return []byte(command)
+	return []byte(command), nil
 }
 
-func DecodeHeartbeatCommand(data []byte) (interface{}, error) {
+func DecodeHeartbeatCommand(data []byte) (*HeartbeatCommand, error) {
 	reader := bufio.NewReader(bytes.NewReader(data))
 
 	value, err := protocol.Parse(reader)
