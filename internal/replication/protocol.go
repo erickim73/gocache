@@ -64,7 +64,7 @@ func DecodeSyncRequest(data []byte) (interface{}, error) {
 	}
 
 	cmd, ok := arr[0].(string)
-	if !ok || cmd != "SYNC" {
+	if !ok || cmd != CmdSync {
 		return nil, errors.New("expected SYNC command")
 	}
 
@@ -73,14 +73,18 @@ func DecodeSyncRequest(data []byte) (interface{}, error) {
 		return nil, errors.New("invalid follower ID")
 	}
 
-	lastSeqNumStr, ok := arr[2].(string)
-	if !ok {
-		return nil, errors.New("invalid sequence number")
-	}
-
-	lastSeqNum, err := strconv.ParseInt(lastSeqNumStr, 10, 64)
-	if err != nil {
-		return nil, err
+	// handle both string and int types for LastSeqNum
+	var lastSeqNum int64
+	switch v := arr[2].(type) {
+	case int:
+		lastSeqNum = arr[2].(int64)
+	case string:
+		lastSeqNum, err = strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			fmt.Errorf("invalid sequence number: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("sequence number must be int or string, got %s", v)
 	}
 
 	return &SyncRequest{
