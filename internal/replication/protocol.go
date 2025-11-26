@@ -96,3 +96,16 @@ func DecodeSyncRequest(data []byte) (interface{}, error) {
 		LastSeqNum: lastSeqNum,
 	}, nil
 }
+
+func EncodeReplicateCommand(comm *ReplicateCommand) []byte {
+	command := protocol.EncodeArray([]interface{}{
+		CmdReplicate,
+		comm.SeqNum,
+		comm.Operation,
+		comm.Key,
+		comm.Value,
+		comm.TTL,
+	})
+
+	return []byte(command)
+}
