@@ -200,6 +200,14 @@ func DecodeReplicateCommand(data []byte) (interface{}, error) {
 		Value: value,
 		TTL: ttl,
 	}, nil
+}
 
+func EncodeHeartbeatRequest(req *Heartbeat) []byte {
+	command := protocol.EncodeArray([]interface{}{
+		CmdHeartbeat,
+		req.SeqNum,
+		req.NodeID,
+	})
 
+	return []byte(command)
 }
