@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
 	"strconv"
 
 	"github.com/erickim73/gocache/pkg/protocol"
@@ -41,8 +42,7 @@ type Heartbeat struct {
 }
 
 func EncodeSyncRequest(req *SyncRequest) []byte {
-	lastSeqNum := strconv.FormatInt(req.LastSeqNum, 10)
-	command := protocol.EncodeArray([]interface{}{CmdSync, req.FollowerID, lastSeqNum})
+	command := protocol.EncodeArray([]interface{}{CmdSync, req.FollowerID, req.LastSeqNum})
 
 	return []byte(command)
 }
@@ -60,7 +60,7 @@ func DecodeSyncRequest(data []byte) (interface{}, error) {
 	}
 
 	if len(arr) != 3 {
-		return nil, errors.New("expected length of array to be 3")
+		return nil, fmt.Errorf("expected length of array to be 3, got %d", len(arr))
 	}
 
 	cmd, ok := arr[0].(string)
