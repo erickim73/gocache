@@ -59,7 +59,7 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF) {
 
 			// write to aof
 			ttlSeconds := strconv.Itoa(int(ttl.Seconds()))
-			aofCommand := protocol.EncodeArray([]string{"SET", key, value, ttlSeconds})
+			aofCommand := protocol.EncodeArray([]interface{}{"SET", key, value, ttlSeconds})
 			err := aof.Append(aofCommand)
 			if err != nil {
 				fmt.Printf("Failed to write to AOF: %v\n", err)
@@ -92,7 +92,7 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF) {
 
 			cache.Delete(key)
 
-			aofCommand := protocol.EncodeArray([]string{"DEL", key})
+			aofCommand := protocol.EncodeArray([]interface{}{"DEL", key})
 			err := aof.Append(aofCommand)
 			if err != nil {
 				fmt.Printf("Failed to write to AOF: %v\n", err)

@@ -224,7 +224,7 @@ func (aof *AOF) rewriteAOF () error {
 		}
 		
 		ttlSeconds := strconv.Itoa(int(ttl.Seconds()))
-		aofCommand := protocol.EncodeArray([]string{"SET", key, entry.Value, ttlSeconds})
+		aofCommand := protocol.EncodeArray([]interface{}{"SET", key, entry.Value, ttlSeconds})
 
 		// write directly to file
 		_, err := tempFile.Write([]byte(aofCommand))
