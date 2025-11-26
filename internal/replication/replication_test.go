@@ -13,32 +13,26 @@ func TestReplicateCommandRoundTrip(t *testing.T) {
 		TTL: 3600,
 	}
 
-	encoded := EncodeReplicateCommand(SetCmd)
+	encoded, err := EncodeReplicateCommand(SetCmd)
+	if err != nil {
+		t.Fatalf("Error Encoding Replicate Command: %v", err)
+	}
 	decoded, err := DecodeReplicateCommand(encoded)
 	if err != nil {
 		t.Fatalf("Error Decoding Replicate Command: %v", err)
 	}
 
-	var decodedCmd *ReplicateCommand
-	if dc, ok := decoded.(*ReplicateCommand); ok {
-		decodedCmd = dc
-	} else if dcVal, ok := decoded.(ReplicateCommand); ok {
-		decodedCmd = &dcVal
-	} else {
-		t.Fatalf("Decoded command is not a ReplicateCommand, got %T", decoded)
+	if decoded.SeqNum != 42 {
+		t.Errorf("SeqNum should be 42, got %d", decoded.SeqNum)
 	}
-
-	if decodedCmd.SeqNum != 42 {
-		t.Errorf("SeqNum should be 42, got %d", decodedCmd.SeqNum)
+	if decoded.Operation != OpSet {
+		t.Errorf("Operation should be SET, got %s", decoded.Operation)
 	}
-	if decodedCmd.Operation != OpSet {
-		t.Errorf("Operation should be SET, got %s", decodedCmd.Operation)
+	if decoded.Key != "testing" {
+		t.Errorf("Key should be testing, got %s", decoded.Key)
 	}
-	if decodedCmd.Key != "testing" {
-		t.Errorf("Key should be testing, got %s", decodedCmd.Key)
-	}
-	if decodedCmd.Value != "value" {
-		t.Errorf("Value should be value, got %s", decodedCmd.Value)
+	if decoded.Value != "value" {
+		t.Errorf("Value should be value, got %s", decoded.Value)
 	}
 
 	// test delete
@@ -48,31 +42,26 @@ func TestReplicateCommandRoundTrip(t *testing.T) {
 		Key: "testing",
 	}
 
-	encoded2 := EncodeReplicateCommand(delCmd)
+	encoded2, err := EncodeReplicateCommand(delCmd)
+	if err != nil {
+		t.Fatalf("Error Encoding Replicate Command: %v", err)
+	}
 	decoded2, err := DecodeReplicateCommand(encoded2)
 	if err != nil {
 		t.Fatalf("Error Decoding Replicate Command: %v", err)
 	}
 
-	var decodedCmd2 *ReplicateCommand
-	if dc, ok := decoded2.(*ReplicateCommand); ok {
-		decodedCmd2 = dc
-	} else if dcVal, ok := decoded2.(ReplicateCommand); ok {
-		decodedCmd2 = &dcVal
-	} else {
-		t.Fatalf("Decoded command is not a ReplicateCommand, got %T", decoded)
-	}
 
-	if decodedCmd2.SeqNum != 43 {
-		t.Errorf("SeqNum should be 43, got %d", decodedCmd2.SeqNum)
+	if decoded2.SeqNum != 43 {
+		t.Errorf("SeqNum should be 43, got %d", decoded2.SeqNum)
 	}
-	if decodedCmd2.Operation != OpDelete {
-		t.Errorf("Operation should be DELETE, got %s", decodedCmd2.Operation)
+	if decoded2.Operation != OpDelete {
+		t.Errorf("Operation should be DELETE, got %s", decoded2.Operation)
 	}
-	if decodedCmd2.Key != "testing" {
-		t.Errorf("Key should be 'testing', got %s", decodedCmd2.Key)
+	if decoded2.Key != "testing" {
+		t.Errorf("Key should be 'testing', got %s", decoded2.Key)
 	}
-	if decodedCmd2.Value != "" {
-		t.Errorf("Delete command Value should be empty, got %s", decodedCmd2.Value)
+	if decoded2.Value != "" {
+		t.Errorf("Delete command Value should be empty, got %s", decoded2.Value)
 	}
 }
