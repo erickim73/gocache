@@ -175,9 +175,11 @@ func DecodeReplicateCommand(data []byte) (interface{}, error) {
 		}
 
 	} else if operation == OpDelete {
-		if len(arr) != 6 {
-			return nil, fmt.Errorf("DELETE operation requires 5 elements, got %d", len(arr))
+		if len(arr) != 4 {
+			return nil, fmt.Errorf("DELETE operation requires 4 elements, got %d", len(arr))
 		}
+		value = ""
+		ttl = 0
 	}
 
 	return &ReplicateCommand{
