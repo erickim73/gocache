@@ -42,7 +42,11 @@ type Heartbeat struct {
 }
 
 func EncodeSyncRequest(req *SyncRequest) []byte {
-	command := protocol.EncodeArray([]interface{}{CmdSync, req.FollowerID, req.LastSeqNum})
+	command := protocol.EncodeArray([]interface{}{
+		CmdSync, 
+		req.FollowerID, 
+		req.LastSeqNum,
+	})
 
 	return []byte(command)
 }
@@ -81,7 +85,7 @@ func DecodeSyncRequest(data []byte) (interface{}, error) {
 	case string:
 		lastSeqNum, err = strconv.ParseInt(v, 10, 64)
 		if err != nil {
-			fmt.Errorf("invalid sequence number: %w", err)
+			return nil, fmt.Errorf("invalid sequence number: %w", err)
 		}
 	default:
 		return nil, fmt.Errorf("sequence number must be int or string, got %s", v)
