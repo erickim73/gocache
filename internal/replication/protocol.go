@@ -97,7 +97,7 @@ func DecodeSyncRequest(data []byte) (interface{}, error) {
 	}, nil
 }
 
-func EncodeReplicateCommand(comm *ReplicateCommand) []byte {
+func EncodeReplicateCommand(comm *ReplicateCommand) ([]byte, error) {
 	if comm.Operation == OpSet {
 		command := protocol.EncodeArray([]interface{}{
 			CmdReplicate,
@@ -107,7 +107,7 @@ func EncodeReplicateCommand(comm *ReplicateCommand) []byte {
 			comm.Value,
 			comm.TTL,
 		})
-		return []byte(command)
+		return []byte(command), nil
 	} else if comm.Operation == OpDelete {
 		command := protocol.EncodeArray([]interface{}{
 			CmdReplicate,
@@ -115,10 +115,10 @@ func EncodeReplicateCommand(comm *ReplicateCommand) []byte {
 			comm.Operation,
 			comm.Key,
 		})
-		return []byte(command)
+		return []byte(command), nil
 	}
 	
-	return nil
+	return nil, fmt.Errorf("invalid operation: %s", comm.Operation)
 }
 
 func DecodeReplicateCommand(data []byte) (interface{}, error) {
