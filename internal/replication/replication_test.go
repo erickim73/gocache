@@ -4,6 +4,29 @@ import (
 	"testing"
 )
 
+func TestSyncCommandRoundTrip(t *testing.T) {
+	SyncCmd := &SyncRequest{
+		FollowerID: "follower1", 
+		LastSeqNum: 1,
+	}
+
+	encoded, err := EncodeSyncRequest(SyncCmd)
+	if err != nil {
+		t.Fatalf("Error Encoding Sync Command: %v", err)
+	}
+	decoded, err := DecodeSyncRequest(encoded)
+	if err != nil {
+		t.Fatalf("Error Decoding Sync Command: %v", err)
+	}
+
+	if decoded.FollowerID != "follower1" {
+		t.Errorf("FollowerID should be follower1, got %s", decoded.FollowerID)
+	}
+	if decoded.LastSeqNum != 1 {
+		t.Errorf("LastSeqNum should be 1, got %d", decoded.LastSeqNum)
+	}
+}
+
 func TestReplicateCommandRoundTrip(t *testing.T) {
 	SetCmd := &ReplicateCommand{
 		SeqNum: 42,
