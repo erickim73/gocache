@@ -3,8 +3,8 @@ package replication
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"strconv"
-	"time"
 
 	"github.com/erickim73/gocache/pkg/protocol"
 )
@@ -19,7 +19,7 @@ type ReplicateCommand struct {
 	Operation string
 	Key string
 	Value string
-	TTL time.Time
+	TTL int64
 }
 
 type HeartBeat struct {
@@ -36,9 +36,18 @@ func EncodeSyncRequest(req *SyncRequest) []byte {
 func DecodeSyncRequest(data []byte) (interface{}, error) {
 	reader := bufio.NewReader(bytes.NewReader(data))
 	
-	arr, err := protocol.Parse(reader)
+	value, err := protocol.Parse(reader)
 	if err != nil {
 		return nil, err
+	}
+
+	arr, ok := value.([]interface{})
+	if !ok {
+		return nil, errors.New("expected array")
+	}
+
+	if len(arr) != 3 {
+		return nil, errors.New("expected length of array to be 3")
 	}
 
 	return arr, nil
