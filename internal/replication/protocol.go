@@ -211,6 +211,10 @@ func DecodeReplicateCommand(data []byte) (*ReplicateCommand, error) {
 }
 
 func EncodeHeartbeatCommand(req *HeartbeatCommand) ([]byte, error) {
+	if req == nil {
+		return nil, errors.New("command cannot be nil")
+	}
+	
 	command := protocol.EncodeArray([]interface{}{
 		CmdHeartbeat,
 		req.SeqNum,
