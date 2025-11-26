@@ -1,8 +1,10 @@
 package replication
 
 import (
-	"time"
+	"bufio"
+	"bytes"
 	"strconv"
+	"time"
 
 	"github.com/erickim73/gocache/pkg/protocol"
 )
@@ -25,9 +27,19 @@ type HeartBeat struct {
 	NodeID string
 }
 
-func EncodeSyncRequest(req *SyncRequest) ([]byte, error) {
+func EncodeSyncRequest(req *SyncRequest) []byte {
 	lastSeqNum := strconv.FormatInt(req.LastSeqNum, 10)
 	command := protocol.EncodeArray([]string{"SYNC", req.FollowerID, lastSeqNum})
 
-	return []byte(command), nil
+	return []byte(command)
+}
+func DecodeSyncRequest(data []byte) (interface{}, error) {
+	reader := bufio.NewReader(bytes.NewReader(data))
+	
+	arr, err := protocol.Parse(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	return arr, nil
 }
