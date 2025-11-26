@@ -42,7 +42,7 @@ type Heartbeat struct {
 
 func EncodeSyncRequest(req *SyncRequest) []byte {
 	lastSeqNum := strconv.FormatInt(req.LastSeqNum, 10)
-	command := protocol.EncodeArray([]interface{}{"SYNC", req.FollowerID, lastSeqNum})
+	command := protocol.EncodeArray([]interface{}{CmdSync, req.FollowerID, lastSeqNum})
 
 	return []byte(command)
 }
