@@ -81,7 +81,7 @@ func DecodeSyncRequest(data []byte) (interface{}, error) {
 	var lastSeqNum int64
 	switch v := arr[2].(type) {
 	case int:
-		lastSeqNum = arr[2].(int64)
+		lastSeqNum = int64(v)
 	case string:
 		lastSeqNum, err = strconv.ParseInt(v, 10, 64)
 		if err != nil {
@@ -123,10 +123,6 @@ func DecodeReplicateCommand(data []byte) (interface{}, error) {
 		return nil, errors.New("expected array")
 	}
 
-	if len(arr) != 5 || len(arr) != 6 {
-		return nil, fmt.Errorf("expected length of array to be 6, got %d", len(arr))
-	}
-
 	cmd, ok := arr[0].(string)
 	if !ok || cmd != CmdReplicate {
 		return nil, errors.New("expected REPLICATE command")
@@ -136,7 +132,7 @@ func DecodeReplicateCommand(data []byte) (interface{}, error) {
 	var seqNum int64
 	switch v := arr[1].(type) {
 	case int:
-		seqNum = arr[1].(int64)
+		seqNum = int64(v)
 	case string:
 		seqNum, err = strconv.ParseInt(v, 10, 64)
 		if err != nil {
@@ -147,7 +143,7 @@ func DecodeReplicateCommand(data []byte) (interface{}, error) {
 	}
 
 	operation, ok := arr[2].(string)
-	if !ok || operation != OpSet || operation != OpDelete {
+	if !ok || (operation != OpSet && operation != OpDelete) {
 		return nil, errors.New("expected operation to be SET or DELETE")
 	}
 
@@ -159,6 +155,10 @@ func DecodeReplicateCommand(data []byte) (interface{}, error) {
 	var value string
 	var ttl int64
 	if operation == OpSet {
+		if len(arr) != 6 {
+			return nil, fmt.Errorf("SET operation requires 6 elements, got %d", len(arr))
+		}
+		
 		value, ok = arr[4].(string)
 		if !ok {
 			return nil, errors.New("expected value to be a string")
@@ -169,6 +169,9 @@ func DecodeReplicateCommand(data []byte) (interface{}, error) {
 			return nil, errors.New("expected ttl to be of type int64")
 		}
 	} else if operation == OpDelete {
+		if len(arr) != 6 {
+			return nil, fmt.Errorf("DELETE operation requires 5 elements, got %d", len(arr))
+		}
 		ttl, ok = arr[4].(int64)
 		if !ok {
 			return nil, errors.New("expected ttl to be of type int64")
