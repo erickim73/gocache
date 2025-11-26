@@ -50,5 +50,28 @@ func DecodeSyncRequest(data []byte) (interface{}, error) {
 		return nil, errors.New("expected length of array to be 3")
 	}
 
-	return arr, nil
+	cmd, ok := arr[0].(string)
+	if !ok || cmd != "SYNC" {
+		return nil, errors.New("expected SYNC command")
+	}
+
+	followerID, ok := arr[1].(string)
+	if !ok {
+		return nil, errors.New("invalid follower ID")
+	}
+
+	lastSeqNumStr, ok := arr[2].(string)
+	if !ok {
+		return nil, errors.New("invalid sequence number")
+	}
+
+	lastSeqNum, err := strconv.ParseInt(lastSeqNumStr, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SyncRequest{
+		FollowerID: followerID,
+		LastSeqNum: lastSeqNum,
+	}, nil
 }
