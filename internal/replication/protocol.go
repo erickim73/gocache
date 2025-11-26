@@ -98,16 +98,27 @@ func DecodeSyncRequest(data []byte) (interface{}, error) {
 }
 
 func EncodeReplicateCommand(comm *ReplicateCommand) []byte {
-	command := protocol.EncodeArray([]interface{}{
-		CmdReplicate,
-		comm.SeqNum,
-		comm.Operation,
-		comm.Key,
-		comm.Value,
-		comm.TTL,
-	})
-
-	return []byte(command)
+	if comm.Operation == OpSet {
+		command := protocol.EncodeArray([]interface{}{
+			CmdReplicate,
+			comm.SeqNum,
+			comm.Operation,
+			comm.Key,
+			comm.Value,
+			comm.TTL,
+		})
+		return []byte(command)
+	} else if comm.Operation == OpDelete {
+		command := protocol.EncodeArray([]interface{}{
+			CmdReplicate,
+			comm.SeqNum,
+			comm.Operation,
+			comm.Key,
+		})
+		return []byte(command)
+	}
+	
+	return nil
 }
 
 func DecodeReplicateCommand(data []byte) (interface{}, error) {
