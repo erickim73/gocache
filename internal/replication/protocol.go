@@ -36,7 +36,7 @@ type ReplicateCommand struct {
 	TTL int64
 }
 
-type Heartbeat struct {
+type HeartbeatCommand struct {
 	SeqNum int64
 	NodeID string
 }
@@ -202,7 +202,7 @@ func DecodeReplicateCommand(data []byte) (interface{}, error) {
 	}, nil
 }
 
-func EncodeHeartbeatCommand(req *Heartbeat) []byte {
+func EncodeHeartbeatCommand(req *HeartbeatCommand) []byte {
 	command := protocol.EncodeArray([]interface{}{
 		CmdHeartbeat,
 		req.SeqNum,
@@ -210,4 +210,51 @@ func EncodeHeartbeatCommand(req *Heartbeat) []byte {
 	})
 
 	return []byte(command)
+}
+
+func DecodeHeartbeatCommand(data []byte) (interface{}, error) {
+	reader := bufio.NewReader(bytes.NewReader(data))
+
+	value, err := protocol.Parse(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	arr, ok := value.([]interface{})
+	if !ok {
+		return nil, errors.New("expected array")
+	}
+
+	if len(arr) != 3 {
+		return nil, fmt.Errorf("expected length of array to be 3, got %d", len(arr))
+	}
+
+	cmd, ok := arr[0].(string)
+	if !ok || cmd != CmdHeartbeat {
+		return nil, errors.New("expected HEARTBEAT command")
+	}
+
+	// handle both string and int types for seqNum
+	var seqNum int64
+	switch v := arr[1].(type) {
+	case int:
+		seqNum = int64(v)
+	case string:
+		seqNum, err = strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid sequence number: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("sequence number must be int or string, got %s", v)
+	}
+
+	nodeID, ok := arr[2].(string)
+	if !ok {
+		return nil, errors.New("expected nodeID to be a string")
+	}
+
+	return &HeartbeatCommand{
+		SeqNum: seqNum,
+		NodeID: nodeID,
+	}, nil
 }
