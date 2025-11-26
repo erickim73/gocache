@@ -30,11 +30,22 @@ func EncodeError(s string) string {
 }
 
 // Encodes an array into "*[num of elements]\r\n[element1]"
-func EncodeArray(elements []string) string {
+func EncodeArray(elements []interface{}) string {
 	result := "*" + strconv.Itoa(len(elements)) + "\r\n"
 	
 	for _, value := range elements {
-		result += EncodeBulkString(value, false)
+		// handle different types
+		switch v := value.(type) {
+		case string:
+			result += EncodeBulkString(v, false)
+		case int:
+			result += EncodeInteger(v)
+		case int64:
+			result += EncodeInteger(int(v))
+		default:
+			panic("unsupported type in array")
+			
+		}
 	}
 
 	return result
