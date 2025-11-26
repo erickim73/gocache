@@ -202,7 +202,7 @@ func DecodeReplicateCommand(data []byte) (interface{}, error) {
 	}, nil
 }
 
-func EncodeHeartbeatRequest(req *Heartbeat) []byte {
+func EncodeHeartbeatCommand(req *Heartbeat) []byte {
 	command := protocol.EncodeArray([]interface{}{
 		CmdHeartbeat,
 		req.SeqNum,
