@@ -164,17 +164,19 @@ func DecodeReplicateCommand(data []byte) (interface{}, error) {
 			return nil, errors.New("expected value to be a string")
 		}
 
-		ttl, ok = arr[5].(int64)
-		if !ok {
-			return nil, errors.New("expected ttl to be of type int64")
+		// handle both int and int64
+		switch v := arr[5].(type) {
+		case int:
+			ttl = int64(v)
+		case int64:
+			ttl = v
+		default:
+			return nil, errors.New("expected ttl to be an integer")
 		}
+
 	} else if operation == OpDelete {
 		if len(arr) != 6 {
 			return nil, fmt.Errorf("DELETE operation requires 5 elements, got %d", len(arr))
-		}
-		ttl, ok = arr[4].(int64)
-		if !ok {
-			return nil, errors.New("expected ttl to be of type int64")
 		}
 	}
 
