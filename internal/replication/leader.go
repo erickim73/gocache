@@ -51,5 +51,13 @@ func NewLeader(cache *cache.Cache, aof *persistence.AOF, port int) (*Leader, err
 }
 
 func (l *Leader) Start() error {
-	
+	for {
+		conn, err := l.listener.Accept()
+		if err != nil {
+			return fmt.Errorf("Error accepting connection: %v", err)
+		}
+
+		go l.handleFollower(conn)
+	}
 }
+
