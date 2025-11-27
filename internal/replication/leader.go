@@ -23,11 +23,11 @@ type FollowerConn struct {
 	id string // follower's id
 }
 
-func NewLeader(cache *cache.Cache, aof *persistence.AOF, port int) (*Leader, error) {
+func NewLeader(cache *cache.Cache, aof *persistence.AOF) (*Leader, error) {
 	// load defaults
 	cfg := config.DefaultConfig()
 
-	port = cfg.Port + 1
+	port := cfg.Port + 1
 
 	// create a tcp listener on a port 
 	address := fmt.Sprintf("0.0.0.0:%d", port)
@@ -54,10 +54,15 @@ func (l *Leader) Start() error {
 	for {
 		conn, err := l.listener.Accept()
 		if err != nil {
-			return fmt.Errorf("Error accepting connection: %v", err)
+			return fmt.Errorf("error accepting connection: %v", err)
 		}
 
 		go l.handleFollower(conn)
 	}
+
+	return nil
 }
 
+func (l *Leader) handleFollower(conn net.Conn) {
+	defer conn.Close()
+}
