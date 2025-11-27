@@ -199,7 +199,7 @@ func main() {
 		return
 	}
 
-	// create a tcp listener on port 6379
+	// create a tcp listener on a port 
 	address := fmt.Sprintf("0.0.0.0:%d", cfg.Port)
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
