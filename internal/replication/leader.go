@@ -61,6 +61,10 @@ func (l *Leader) Start() error {
 	return nil
 }
 
+func (l *Leader) Close() error {
+	return l.listener.Close()
+}
+
 func (l *Leader) handleFollower(conn net.Conn) {
 	defer conn.Close()
 
