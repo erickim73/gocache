@@ -1,13 +1,14 @@
 package replication
 
 import (
-	"sync"
-	"net"
+	"bufio"
 	"fmt"
+	"net"
+	"sync"
 
 	"github.com/erickim73/gocache/internal/cache"
-	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/internal/config"
+	"github.com/erickim73/gocache/internal/persistence"
 )
 
 type Leader struct {
@@ -37,9 +38,6 @@ func NewLeader(cache *cache.Cache, aof *persistence.AOF) (*Leader, error) {
 		return nil, err
 	}
 
-	defer listener.Close()
-
-	
 	leader := &Leader{
 		cache: cache,
 		followers: make([]*FollowerConn, 0),
@@ -65,4 +63,11 @@ func (l *Leader) Start() error {
 
 func (l *Leader) handleFollower(conn net.Conn) {
 	defer conn.Close()
+
+	// read from client
+	reader := bufio.NewReader(conn)
+	for {
+		decoded, err := DecodeSyncRequest()
+	}
+	
 }
