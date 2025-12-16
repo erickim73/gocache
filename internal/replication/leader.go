@@ -4,11 +4,14 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/config"
 	"github.com/erickim73/gocache/internal/persistence"
+	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 type Leader struct {
@@ -68,10 +71,69 @@ func (l *Leader) Close() error {
 func (l *Leader) handleFollower(conn net.Conn) {
 	defer conn.Close()
 
-	// read from client
+	// read sync request from follower
 	reader := bufio.NewReader(conn)
-	for {
-		decoded, err := DecodeSyncRequest()
+	value, err := protocol.Parse(reader)
+	if err != nil {
+		fmt.Printf("Error parsing SYNC request: %v\n", err)
+		return
 	}
+
+	// create writer for sending replicate commands
+	writer := bufio.NewWriter(conn)
+
+	// get current snapshot
+	snapshot := l.cache.Snapshot()
+
+	// iterate over snapshot and send repliate command
+	for key, entry := range snapshot {
+		// increment seq num for each item
+		l.mu.Lock()
+		l.seqNum++
+		seqNum := l.seqNum
+		l.mu.Unlock()
+
+		ttl := time.Duration(0)
+		// no expiration, TTL = 0
+		if entry.ExpiresAt.IsZero() {
+			ttl = 0
+		} else {
+			// has an expiration
+			ttl = time.Until(entry.ExpiresAt)
+
+			if ttl < 0 {
+				continue // skip expired items
+			}
+		}
+
+		ttlSeconds := int64(ttl.Seconds())
+
+		cmd := &ReplicateCommand{
+			SeqNum: seqNum,
+			Operation: OpSet,
+			Key: key,
+			Value: entry.Value,
+			TTL: ttlSeconds,
+		}
+
+		// encode and send
+		encoded, err := EncodeReplicateCommand(cmd)
+		if err != nil {
+			fmt.Printf("Error encoding: %v\n", err)
+			return
+		}
+
+		_, err = writer.Write(encoded)
+		if err != nil {
+			fmt.Printf("Error sending snapshot: %v\n", err)
+			return
+		}
+	}	
+
+	// flush writer to ensure all data is sent
+	writer.Flush()
+
+	fmt.Printf("Sent snapshot to follower %s\n", followerID)
+
 	
 }

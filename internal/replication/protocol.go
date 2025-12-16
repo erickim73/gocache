@@ -54,9 +54,7 @@ func EncodeSyncRequest(req *SyncRequest) ([]byte, error) {
 
 	return []byte(command), nil
 }
-func DecodeSyncRequest(data []byte) (*SyncRequest, error) {
-	reader := bufio.NewReader(bytes.NewReader(data))
-	
+func DecodeSyncRequest(reader *bufio.Reader) (*SyncRequest, error) {
 	value, err := protocol.Parse(reader)
 	if err != nil {
 		return nil, err
