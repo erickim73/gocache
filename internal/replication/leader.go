@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"net"
-	"strconv"
 	"sync"
 	"time"
 
@@ -74,7 +73,7 @@ func (l *Leader) handleFollower(conn net.Conn) {
 	// read sync request from follower
 	reader := bufio.NewReader(conn)
 
-	value, err := protocol.Parse(reader)
+	_, err := protocol.Parse(reader)
 	if err != nil {
 		fmt.Printf("Error parsing SYNC request: %v\n", err)
 		return
@@ -187,4 +186,38 @@ func (l *Leader) removeFollower(id string) {
 			return
 		}
 	}
+}
+
+func (l *Leader) Replicate(operation string, key string, value string, ttl int64) error {
+	// increment sequence number
+	l.mu.Lock()
+	l.seqNum++
+	seqNum := l.seqNum
+	followers := l.followers
+	l.mu.Unlock()
+
+	// create command
+	cmd := &ReplicateCommand{
+		SeqNum: seqNum,
+		Operation: operation,
+		Key: key,
+		Value: value,
+		TTL: ttl,
+	}
+
+	// encode
+	encoded, err := EncodeReplicateCommand(cmd)
+	if err != nil {
+		return err
+	}
+
+	// send to all followers
+	for _, follower := range followers {
+		_, err := follower.conn.Write(encoded)
+		if err != nil {
+			fmt.Printf("Error sending to follower %s: %v\n", follower.id, err)
+		}
+	}
+
+	return nil
 }
