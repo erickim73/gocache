@@ -58,8 +58,6 @@ func (l *Leader) Start() error {
 
 		go l.handleFollower(conn)
 	}
-
-	return nil
 }
 
 func (l *Leader) Close() error {

@@ -1,6 +1,8 @@
 package replication
 
 import (
+	"bufio"
+	"bytes"
 	"testing"
 )
 
@@ -14,7 +16,11 @@ func TestSyncCommandRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error Encoding Sync Command: %v", err)
 	}
-	decoded, err := DecodeSyncRequest(encoded)
+
+	bytesReader := bytes.NewReader(encoded)
+	reader := bufio.NewReader(bytesReader)
+
+	decoded, err := DecodeSyncRequest(reader)
 	if err != nil {
 		t.Fatalf("Error Decoding Sync Command: %v", err)
 	}
