@@ -73,12 +73,6 @@ func (l *Leader) handleFollower(conn net.Conn) {
 	// read sync request from follower
 	reader := bufio.NewReader(conn)
 
-	_, err := protocol.Parse(reader)
-	if err != nil {
-		fmt.Printf("Error parsing SYNC request: %v\n", err)
-		return
-	}
-
 	syncReq, err := DecodeSyncRequest(reader)
 	if err != nil {
 		fmt.Printf("Error decoding SYNC request: %v\n", err)
