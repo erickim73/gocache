@@ -174,3 +174,17 @@ func (l *Leader) addFollower(id string, conn net.Conn) {
 	fmt.Printf("Added followers %s (total: %d\n)", id, len(l.followers))
 }
 
+func (l *Leader) removeFollower(id string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	for i, f := range l.followers {
+		if f.id == id {
+			// remove by swapping with last element and truncating
+			l.followers[i] = l.followers[len(l.followers) - 1]
+			l.followers = l.followers[:len(l.followers) - 1]
+			fmt.Printf("Removed follower %s (remaining %d)\n", id, len(l.followers))
+			return
+		}
+	}
+}
