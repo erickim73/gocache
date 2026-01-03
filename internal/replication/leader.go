@@ -182,7 +182,9 @@ func (l *Leader) Replicate(operation string, key string, value string, ttl int64
 	l.mu.Lock()
 	l.seqNum++
 	seqNum := l.seqNum
-	followers := l.followers
+	
+	followersCopy := make([]*FollowerConn, len(l.followers))
+	copy(followersCopy, l.followers)
 	l.mu.Unlock()
 
 	// create command
@@ -201,7 +203,7 @@ func (l *Leader) Replicate(operation string, key string, value string, ttl int64
 	}
 
 	// send to all followers
-	for _, follower := range followers {
+	for _, follower := range followersCopy {
 		_, err := follower.conn.Write(encoded)
 		if err != nil {
 			fmt.Printf("Error sending to follower %s: %v\n", follower.id, err)
