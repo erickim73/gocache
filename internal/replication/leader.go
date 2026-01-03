@@ -73,9 +73,16 @@ func (l *Leader) handleFollower(conn net.Conn) {
 
 	// read sync request from follower
 	reader := bufio.NewReader(conn)
+
 	value, err := protocol.Parse(reader)
 	if err != nil {
 		fmt.Printf("Error parsing SYNC request: %v\n", err)
+		return
+	}
+
+	syncReq, err := DecodeSyncRequest(reader)
+	if err != nil {
+		fmt.Printf("Error decoding SYNC request: %v\n", err)
 		return
 	}
 
@@ -85,7 +92,11 @@ func (l *Leader) handleFollower(conn net.Conn) {
 	// get current snapshot
 	snapshot := l.cache.Snapshot()
 
-	// iterate over snapshot and send repliate command
+	l.mu.Lock()
+	currentSeqNum := l.seqNum
+	l.mu.Unlock()
+
+	// iterate over snapshot and send replicate command
 	for key, entry := range snapshot {
 		// increment seq num for each item
 		l.mu.Lock()
@@ -93,6 +104,7 @@ func (l *Leader) handleFollower(conn net.Conn) {
 		seqNum := l.seqNum
 		l.mu.Unlock()
 
+		// calculate remaining TTL
 		ttl := time.Duration(0)
 		// no expiration, TTL = 0
 		if entry.ExpiresAt.IsZero() {
@@ -108,6 +120,7 @@ func (l *Leader) handleFollower(conn net.Conn) {
 
 		ttlSeconds := int64(ttl.Seconds())
 
+		// create a replicate command
 		cmd := &ReplicateCommand{
 			SeqNum: seqNum,
 			Operation: OpSet,
@@ -133,7 +146,31 @@ func (l *Leader) handleFollower(conn net.Conn) {
 	// flush writer to ensure all data is sent
 	writer.Flush()
 
-	fmt.Printf("Sent snapshot to follower %s\n", followerID)
+	fmt.Printf("Sent snapshot to follower %s\n", syncReq.FollowerID)
 
-	
+	// add follower to tracked list
+	l.addFollower(syncReq.FollowerID, conn)
+
+	// keep connection alive; detect when follower disconnects
+	for {
+		_, err := reader.ReadByte()
+		if err != nil {
+			fmt.Printf("Follower %s disconnected\n", syncReq.FollowerID)
+			l.removeFollower(syncReq.FollowerID)
+			return
+		}
+	}
 }
+
+func (l *Leader) addFollower(id string, conn net.Conn) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	follower := &FollowerConn{
+		id: id,
+		conn: conn,
+	}
+	l.followers = append(l.followers, follower)
+	fmt.Printf("Added followers %s (total: %d\n)", id, len(l.followers))
+}
+
