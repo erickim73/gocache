@@ -10,7 +10,6 @@ import (
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/config"
 	"github.com/erickim73/gocache/internal/persistence"
-	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 type Leader struct {
@@ -84,10 +83,6 @@ func (l *Leader) handleFollower(conn net.Conn) {
 
 	// get current snapshot
 	snapshot := l.cache.Snapshot()
-
-	l.mu.Lock()
-	currentSeqNum := l.seqNum
-	l.mu.Unlock()
 
 	// iterate over snapshot and send replicate command
 	for key, entry := range snapshot {
