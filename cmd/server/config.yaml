@@ -1,5 +1,6 @@
 port: 6379
 max_cache_size: 1000
+role: leader
 aof_file: cache.aof
 snapshot_file: cache.rdb
 sync_policy: SyncEverySecond
