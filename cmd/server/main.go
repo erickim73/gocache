@@ -10,11 +10,12 @@ import (
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/config"
 	"github.com/erickim73/gocache/internal/persistence"
+	"github.com/erickim73/gocache/internal/replication"
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 // handle client commands and write to aof
-func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF) {
+func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader, role string) {
 	defer conn.Close()
 
 	// read from client
@@ -58,7 +59,13 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF) {
 			cache.Set(key, value, ttl)
 
 			// send to followers
-			
+			if leader != nil {
+				ttlSeconds := int64(ttl.Seconds()) // 0 if no TTL
+				err := leader.Replicate(replication.OpSet, key, value, ttlSeconds)
+				if err != nil {
+					fmt.Printf("Error replicating from leader to follower: %v\n", err)
+				}
+			}
 
 			// write to aof
 			ttlSeconds := strconv.Itoa(int(ttl.Seconds()))
@@ -202,6 +209,20 @@ func main() {
 		return
 	}
 
+	var leader *replication.Leader
+
+	if cfg.Role == "leader" {
+		leader, err = replication.NewLeader(myCache, aof)
+		if err != nil {
+			fmt.Printf("error creating leader: %v\n", err)
+			return
+		}
+		go leader.Start()
+	} else {
+		// follower := replication.NewFollower(myCache, cfg.LeaderAddr) // STILL HAVE TO IMPLEMENT
+		// go follower.Start()
+	}
+	
 	// create a tcp listener on a port 
 	address := fmt.Sprintf("0.0.0.0:%d", cfg.Port)
 	listener, err := net.Listen("tcp", address)
@@ -222,6 +243,6 @@ func main() {
 		}
 
 		// handle connection in a separate goroutine
-		go handleConnection(conn, myCache, aof)
+		go handleConnection(conn, myCache, aof, leader, cfg.Role)
 	}
 }
