@@ -63,7 +63,7 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, l
 				ttlSeconds := int64(ttl.Seconds()) // 0 if no TTL
 				err := leader.Replicate(replication.OpSet, key, value, ttlSeconds)
 				if err != nil {
-					fmt.Printf("Error replicating from leader to follower: %v\n", err)
+					fmt.Printf("Error replicating SET command from leader to follower: %v\n", err)
 				}
 			}
 
@@ -101,6 +101,14 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, l
 			key := resultSlice[1].(string)
 
 			cache.Delete(key)
+
+			// send to followers
+			if leader != nil {
+				err := leader.Replicate(replication.OpSet, key, "", 0)
+				if err != nil {
+					fmt.Printf("Error replicating DEL command from leader to follower: %v\n", err)
+				}
+			}
 
 			aofCommand := protocol.EncodeArray([]interface{}{"DEL", key})
 			err := aof.Append(aofCommand)
