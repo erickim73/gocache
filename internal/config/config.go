@@ -13,6 +13,7 @@ import (
 type yamlConfig struct {
 	Port                    int    `yaml:"port"`
 	MaxCacheSize            int    `yaml:"max_cache_size"`
+	Role 					string `yaml:"role"`
 	AOFFIleName             string `yaml:"aof_file"`
 	SnapshotFileName        string `yaml:"snapshot_file"`
 	SyncPolicy              string `yaml:"sync_policy"`
@@ -27,6 +28,9 @@ type Config struct {
 	// cache settings
 	MaxCacheSize int
 
+	// replication settings
+	Role string // leader or follower
+
 	// persistence settings
 	AOFFileName      string
 	SnapshotFileName string
@@ -39,6 +43,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		Port:             6379,
 		MaxCacheSize:     1000,
+		Role: 			  "leader",
 		AOFFileName:      "cache.aof",
 		SnapshotFileName: "cache.rdb",
 		SyncPolicy:       "everysecond",
@@ -63,6 +68,7 @@ func LoadFromFile(fileName string) (*Config, error) {
 	return &Config{
 		Port:             yc.Port,
 		MaxCacheSize:     yc.MaxCacheSize,
+		Role: 			  yc.Role,
 		AOFFileName:      yc.AOFFIleName,
 		SnapshotFileName: yc.SnapshotFileName,
 		SyncPolicy:       yc.SyncPolicy,
@@ -94,6 +100,9 @@ func ParseFlags(cfg *Config) string {
 	// cache flags
 	flag.IntVar(&cfg.MaxCacheSize, "max-size", cfg.MaxCacheSize, "Maximum cache size")
 
+	// replication flags
+	flag.StringVar(&cfg.Role, "role", cfg.Role, "Role: leader or follower")
+
 	// persistence flags
 	flag.StringVar(&cfg.AOFFileName, "aof-file", cfg.AOFFileName, "AOF File path")
 	flag.StringVar(&cfg.SnapshotFileName, "snapshot-file", cfg.SnapshotFileName, "Snapshot file path")
@@ -118,6 +127,8 @@ func ApplyFlags(cfg *Config) {
 			fmt.Sscanf(f.Value.String(), "%d", &cfg.Port)
 		case "max-size":
 			fmt.Sscanf(f.Value.String(), "%d", &cfg.MaxCacheSize)
+		case "role":
+			cfg.Role = f.Value.String()
 		case "aof-file":
 			cfg.AOFFileName = f.Value.String()
 		case "snapshot-file":

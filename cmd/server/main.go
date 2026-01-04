@@ -57,6 +57,9 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF) {
 
 			cache.Set(key, value, ttl)
 
+			// send to followers
+			
+
 			// write to aof
 			ttlSeconds := strconv.Itoa(int(ttl.Seconds()))
 			aofCommand := protocol.EncodeArray([]interface{}{"SET", key, value, ttlSeconds})
