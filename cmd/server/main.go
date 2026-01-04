@@ -48,19 +48,20 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, l
 			// if ttl provided as a 4th argument
 			if len(resultSlice) == 4 {
 				seconds := resultSlice[3].(string)
-				ttlSeconds, err := strconv.Atoi(seconds)
+				ttlSec, err := strconv.Atoi(seconds)
 				if err != nil {
 					conn.Write([]byte(protocol.EncodeError("Couldn't convert seconds to a string")))
 					continue
 				}
-				ttl = time.Duration(ttlSeconds) * time.Second
+				ttl = time.Duration(ttlSec) * time.Second
 			}
 
 			cache.Set(key, value, ttl)
 
+			ttlSeconds := int64(ttl.Seconds()) // 0 if no TTL
+
 			// send to followers
 			if leader != nil {
-				ttlSeconds := int64(ttl.Seconds()) // 0 if no TTL
 				err := leader.Replicate(replication.OpSet, key, value, ttlSeconds)
 				if err != nil {
 					fmt.Printf("Error replicating SET command from leader to follower: %v\n", err)
@@ -68,8 +69,8 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, l
 			}
 
 			// write to aof
-			ttlSeconds := strconv.Itoa(int(ttl.Seconds()))
-			aofCommand := protocol.EncodeArray([]interface{}{"SET", key, value, ttlSeconds})
+			ttlSecondsStr := strconv.FormatInt(ttlSeconds, 10) 
+			aofCommand := protocol.EncodeArray([]interface{}{"SET", key, value, ttlSecondsStr})
 			err := aof.Append(aofCommand)
 			if err != nil {
 				fmt.Printf("Failed to write to AOF: %v\n", err)
@@ -104,7 +105,7 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, l
 
 			// send to followers
 			if leader != nil {
-				err := leader.Replicate(replication.OpSet, key, "", 0)
+				err := leader.Replicate(replication.OpDelete, key, "", 0)
 				if err != nil {
 					fmt.Printf("Error replicating DEL command from leader to follower: %v\n", err)
 				}
