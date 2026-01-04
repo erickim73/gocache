@@ -2,7 +2,6 @@ package replication
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"strconv"
@@ -127,15 +126,13 @@ func EncodeReplicateCommand(comm *ReplicateCommand) ([]byte, error) {
 	return nil, fmt.Errorf("invalid operation: %s", comm.Operation)
 }
 
-func DecodeReplicateCommand(data []byte) (*ReplicateCommand, error) {
-	reader := bufio.NewReader(bytes.NewReader(data))
-
-	parsed, err := protocol.Parse(reader)
+func DecodeReplicateCommand(reader *bufio.Reader) (*ReplicateCommand, error) {
+	value_init, err := protocol.Parse(reader)
 	if err != nil {
 		return nil, err
 	}
 
-	arr, ok := parsed.([]interface{})
+	arr, ok := value_init.([]interface{})
 	if !ok {
 		return nil, errors.New("expected array")
 	}
@@ -222,9 +219,7 @@ func EncodeHeartbeatCommand(req *HeartbeatCommand) ([]byte, error) {
 	return []byte(command), nil
 }
 
-func DecodeHeartbeatCommand(data []byte) (*HeartbeatCommand, error) {
-	reader := bufio.NewReader(bytes.NewReader(data))
-
+func DecodeHeartbeatCommand(reader *bufio.Reader) (*HeartbeatCommand, error) {
 	value, err := protocol.Parse(reader)
 	if err != nil {
 		return nil, err
