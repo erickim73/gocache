@@ -1,4 +1,4 @@
-port: 6379
+port: 7000
 max_cache_size: 1000
 role: leader
 aof_file: cache.aof

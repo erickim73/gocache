@@ -13,16 +13,16 @@ import (
 )
 
 type Leader struct {
-	cache *cache.Cache
+	cache     *cache.Cache
 	followers []*FollowerConn // list of connected followers
-	seqNum int64 // current sequence number
-	mu sync.RWMutex
-	listener net.Listener
+	seqNum    int64           // current sequence number
+	mu        sync.RWMutex
+	listener  net.Listener
 }
 
 type FollowerConn struct {
 	conn net.Conn // tcp connection to follower
-	id string // follower's id
+	id   string   // follower's id
 }
 
 func NewLeader(cache *cache.Cache, aof *persistence.AOF) (*Leader, error) {
@@ -31,7 +31,7 @@ func NewLeader(cache *cache.Cache, aof *persistence.AOF) (*Leader, error) {
 
 	port := cfg.Port + 1
 
-	// create a tcp listener on a port 
+	// create a tcp listener on a port
 	address := fmt.Sprintf("0.0.0.0:%d", port)
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
@@ -40,16 +40,20 @@ func NewLeader(cache *cache.Cache, aof *persistence.AOF) (*Leader, error) {
 	}
 
 	leader := &Leader{
-		cache: cache,
+		cache:     cache,
 		followers: make([]*FollowerConn, 0),
-		seqNum: 0,
-		listener: listener,
+		seqNum:    0,
+		listener:  listener,
 	}
 
 	return leader, nil
 }
 
 func (l *Leader) Start() error {
+	// load defaults
+	cfg := config.DefaultConfig()
+
+	fmt.Printf("Leader replication server listening on port %d...\n", cfg.Port+1)
 	for {
 		conn, err := l.listener.Accept()
 		if err != nil {
@@ -108,11 +112,11 @@ func (l *Leader) handleFollower(conn net.Conn) {
 
 		// create a replicate command
 		cmd := &ReplicateCommand{
-			SeqNum: seqNum,
+			SeqNum:    seqNum,
 			Operation: OpSet,
-			Key: key,
-			Value: entry.Value,
-			TTL: ttlSeconds,
+			Key:       key,
+			Value:     entry.Value,
+			TTL:       ttlSeconds,
 		}
 
 		// encode and send
@@ -127,7 +131,7 @@ func (l *Leader) handleFollower(conn net.Conn) {
 			fmt.Printf("Error sending snapshot: %v\n", err)
 			return
 		}
-	}	
+	}
 
 	// flush writer to ensure all data is sent
 	writer.Flush()
@@ -153,7 +157,7 @@ func (l *Leader) addFollower(id string, conn net.Conn) {
 	defer l.mu.Unlock()
 
 	follower := &FollowerConn{
-		id: id,
+		id:   id,
 		conn: conn,
 	}
 	l.followers = append(l.followers, follower)
@@ -167,8 +171,8 @@ func (l *Leader) removeFollower(id string) {
 	for i, f := range l.followers {
 		if f.id == id {
 			// remove by swapping with last element and truncating
-			l.followers[i] = l.followers[len(l.followers) - 1]
-			l.followers = l.followers[:len(l.followers) - 1]
+			l.followers[i] = l.followers[len(l.followers)-1]
+			l.followers = l.followers[:len(l.followers)-1]
 			fmt.Printf("Removed follower %s (remaining %d)\n", id, len(l.followers))
 			return
 		}
@@ -180,18 +184,18 @@ func (l *Leader) Replicate(operation string, key string, value string, ttl int64
 	l.mu.Lock()
 	l.seqNum++
 	seqNum := l.seqNum
-	
+
 	followersCopy := make([]*FollowerConn, len(l.followers))
 	copy(followersCopy, l.followers)
 	l.mu.Unlock()
 
 	// create command
 	cmd := &ReplicateCommand{
-		SeqNum: seqNum,
+		SeqNum:    seqNum,
 		Operation: operation,
-		Key: key,
-		Value: value,
-		TTL: ttl,
+		Key:       key,
+		Value:     value,
+		TTL:       ttl,
 	}
 
 	// encode

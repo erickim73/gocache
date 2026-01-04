@@ -41,7 +41,7 @@ type Config struct {
 
 func DefaultConfig() *Config {
 	return &Config{
-		Port:             6379,
+		Port:             7000,
 		MaxCacheSize:     1000,
 		Role: 			  "leader",
 		AOFFileName:      "cache.aof",
