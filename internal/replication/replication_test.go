@@ -79,7 +79,11 @@ func TestReplicateCommandRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error Encoding Replicate Command: %v", err)
 	}
-	decoded2, err := DecodeReplicateCommand(encoded2)
+
+	bytesReader2 := bytes.NewReader(encoded2)
+	reader2 := bufio.NewReader(bytesReader2)
+
+	decoded2, err := DecodeReplicateCommand(reader2)
 	if err != nil {
 		t.Fatalf("Error Decoding Replicate Command: %v", err)
 	}
