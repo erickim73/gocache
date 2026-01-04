@@ -46,7 +46,11 @@ func TestReplicateCommandRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error Encoding Replicate Command: %v", err)
 	}
-	decoded, err := DecodeReplicateCommand(encoded)
+
+	bytesReader := bytes.NewReader(encoded)
+	reader := bufio.NewReader(bytesReader)
+
+	decoded, err := DecodeReplicateCommand(reader)
 	if err != nil {
 		t.Fatalf("Error Decoding Replicate Command: %v", err)
 	}
@@ -105,7 +109,11 @@ func TestHeartbeatCommandRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error Encoding Heartbeat Command: %v", err)
 	}
-	decoded, err := DecodeHeartbeatCommand(encoded)
+
+	bytesReader := bytes.NewReader(encoded)
+	reader := bufio.NewReader(bytesReader)
+
+	decoded, err := DecodeHeartbeatCommand(reader)
 	if err != nil {
 		t.Fatalf("Error Decoding Heartbeat Command: %v", err)
 	}
