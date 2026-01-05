@@ -75,3 +75,15 @@ func (f *Follower) Start() error {
 		}
 	}
 }
+
+func (f *Follower) connectToLeader() error {
+	conn, err := net.Dial("tcp", f.leaderAddr)
+	if err != nil {
+		return err
+	}
+
+	f.mu.Lock()
+	f.conn = conn
+	f.mu.Unlock()
+	return nil
+}
