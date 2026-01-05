@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/erickim73/gocache/internal/cache"
-	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 type Follower struct {
