@@ -123,7 +123,7 @@ func (f *Follower) processReplicationStream() error {
 	}
 	
 	// read from leader
-	reader := bufio.NewReader(f.conn)
+	reader := bufio.NewReader(conn)
 	
 	for {
 		// decode replicate command
