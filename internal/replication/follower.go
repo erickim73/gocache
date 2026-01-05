@@ -87,3 +87,27 @@ func (f *Follower) connectToLeader() error {
 	f.mu.Unlock()
 	return nil
 }
+
+func (f *Follower) sendSyncRequest() error {
+	f.mu.RLock()
+	conn := f.conn
+	lastSeqNum := f.lastSeqNum
+	f.mu.RUnlock()
+
+	if conn != nil { 
+		return fmt.Errorf("no connection")
+	}
+
+	req := &SyncRequest{
+		FollowerID: f.id,
+		LastSeqNum: lastSeqNum,
+	}
+	
+	encoded, err := EncodeSyncRequest(req)
+	if err != nil {
+		return err
+	}
+
+	_, err = conn.Write(encoded)
+	return err
+}
