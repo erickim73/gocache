@@ -1,12 +1,14 @@
 package replication
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/erickim73/gocache/internal/cache"
+	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 type Follower struct {
@@ -110,4 +112,42 @@ func (f *Follower) sendSyncRequest() error {
 
 	_, err = conn.Write(encoded)
 	return err
+}
+
+func (f *Follower) processReplicationStream() error {
+	f.mu.Lock()
+	conn := f.conn
+	f.mu.Unlock()
+
+	if conn != nil {
+		return fmt.Errorf("no connection to leader")
+	}
+	
+	// read from leader
+	reader := bufio.NewReader(f.conn)
+	
+	for {
+		// decode replicate command
+		repCmd, err := DecodeReplicateCommand(reader)
+		if err != nil {
+			return err
+		}
+
+		// apply command
+		switch repCmd.Operation {
+		case OpSet:
+			ttl := time.Duration(repCmd.TTL) * time.Second
+			f.cache.Set(repCmd.Key, repCmd.Value, ttl)
+		
+		case OpDelete:
+			f.cache.Delete(repCmd.Key)
+		}
+
+		// update lastSeqNum
+		f.mu.Lock()
+		if repCmd.SeqNum > f.lastSeqNum {
+			f.lastSeqNum = repCmd.SeqNum
+		}
+		f.mu.Unlock()
+	}
 }
