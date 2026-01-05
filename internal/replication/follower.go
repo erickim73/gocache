@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/erickim73/gocache/internal/cache"
 )
@@ -27,7 +28,7 @@ func NewFollower(cache *cache.Cache, leaderAddr string, id string) (*Follower, e
 	if id == "" {
 		return nil, fmt.Errorf("follower id cannot be empty")
 	}
-	
+
 	follower := &Follower{
 		cache: cache,
 		leaderAddr: leaderAddr,
@@ -39,5 +40,38 @@ func NewFollower(cache *cache.Cache, leaderAddr string, id string) (*Follower, e
 } 
 
 func (f *Follower) Start() error {
+	backoff := 200 * time.Millisecond
+	maxBackoff := 5 * time.Second
 
+	for {
+		err := f.connectToLeader()
+		if err != nil {
+			fmt.Printf("follower %s connect failed: %v; retrying in %v\n", f.id, err, backoff)
+			time.Sleep(backoff)
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+			continue
+		}
+
+		// reset backoff after successful connection
+		backoff = 200 * time.Millisecond
+		
+		// send SYNC request
+		err = f.sendSyncRequest()
+		if err != nil {
+			fmt.Printf("follower %s SYNC failed: %v; reconnecting\n", f.id, err)
+			f.closeConn()
+			continue
+		}
+
+		// read and apply replication stream
+		err = f.processReplicationStream()
+		if err != nil {
+			fmt.Printf("follower %s replication failed: %v; reconnecting\n", f.id, err)
+			f.closeConn()
+			continue
+		}
+	}
 }
