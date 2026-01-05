@@ -153,10 +153,9 @@ func (f *Follower) processReplicationStream() error {
 
 func (f *Follower) closeConn() {
 	f.mu.Lock()
-	conn := f.conn
 	defer f.mu.Unlock()
 
-	if conn != nil {
+	if f.conn != nil {
 		_ = f.conn.Close()
 		f.conn = nil
 	}
