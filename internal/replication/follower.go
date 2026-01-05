@@ -16,3 +16,13 @@ type Follower struct {
 	mu         sync.RWMutex  // protects conn 	
 }	
 
+func NewFollower(cache *cache.Cache, leaderAddr string, id string) (*Follower, error) {
+	follower := &Follower{
+		cache: cache,
+		leaderAddr: leaderAddr,
+		lastSeqNum: 0,
+		id: id,
+	}
+
+	return follower, nil
+} 
