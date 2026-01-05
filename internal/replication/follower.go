@@ -118,7 +118,7 @@ func (f *Follower) processReplicationStream() error {
 	conn := f.conn
 	f.mu.Unlock()
 
-	if conn != nil {
+	if conn == nil {
 		return fmt.Errorf("no connection to leader")
 	}
 	
