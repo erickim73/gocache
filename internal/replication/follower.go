@@ -95,7 +95,7 @@ func (f *Follower) sendSyncRequest() error {
 	lastSeqNum := f.lastSeqNum
 	f.mu.RUnlock()
 
-	if conn != nil { 
+	if conn == nil { 
 		return fmt.Errorf("no connection")
 	}
 
