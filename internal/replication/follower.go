@@ -1,6 +1,7 @@
 package replication
 
 import (
+	"fmt"
 	"net"
 	"sync"
 
@@ -17,6 +18,16 @@ type Follower struct {
 }	
 
 func NewFollower(cache *cache.Cache, leaderAddr string, id string) (*Follower, error) {
+	if cache == nil {
+		return nil, fmt.Errorf("cache instance cannot be nil")
+	}
+	if leaderAddr == "" {
+		return nil, fmt.Errorf("leader address cannot be empty")
+	}
+	if id == "" {
+		return nil, fmt.Errorf("follower id cannot be empty")
+	}
+	
 	follower := &Follower{
 		cache: cache,
 		leaderAddr: leaderAddr,
@@ -26,3 +37,7 @@ func NewFollower(cache *cache.Cache, leaderAddr string, id string) (*Follower, e
 
 	return follower, nil
 } 
+
+func (f *Follower) Start() error {
+
+}
