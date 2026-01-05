@@ -20,6 +20,7 @@ const (
 	CmdSync = "SYNC"
 	CmdReplicate = "REPLICATE"
 	CmdHeartbeat = "HEARTBEAT"
+	CmdSyncEnd = "SYNCEND"
 )
 
 type SyncRequest struct {
@@ -262,4 +263,8 @@ func DecodeHeartbeatCommand(reader *bufio.Reader) (*HeartbeatCommand, error) {
 		SeqNum: seqNum,
 		NodeID: nodeID,
 	}, nil
+}
+
+func EncodeSyncEnd(seqNum int64) []byte {
+	return []byte(protocol.EncodeArray([]interface{}{CmdSyncEnd, seqNum}))
 }
