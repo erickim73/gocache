@@ -279,7 +279,7 @@ func DecodeSyncEnd(arr []interface{}) (int64, bool) {
 		return 0, false
 	}
 
-	seq, ok := parseInt64(arr[1])
+	seq, ok := ParseInt64(arr[1])
 	if !ok {
 		return 0, false
 	}
@@ -287,7 +287,7 @@ func DecodeSyncEnd(arr []interface{}) (int64, bool) {
 	return seq, true
 }
 
-func parseInt64(v interface{}) (int64, bool) {
+func ParseInt64(v interface{}) (int64, bool) {
 	switch val := v.(type){
 	case int:
 		return int64(val), true

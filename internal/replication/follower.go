@@ -136,7 +136,7 @@ func (f *Follower) sendSyncRequest() error {
 
 			// extract seqNum
 			var seqNum int64
-			seqNum, ok := parseInt64(resultSlice[1])
+			seqNum, ok := ParseInt64(resultSlice[1])
 			if !ok {
 				return fmt.Errorf("invalid sequence number")
 			}
@@ -164,7 +164,7 @@ func (f *Follower) sendSyncRequest() error {
 					return fmt.Errorf("value must be a string")
 				}
 
-				ttl, ok := parseInt64(resultSlice[5])
+				ttl, ok := ParseInt64(resultSlice[5])
 				if !ok {
 					return fmt.Errorf("ttl must be an integer")
 				}
@@ -178,28 +178,14 @@ func (f *Follower) sendSyncRequest() error {
 				}
 
 				f.cache.Delete(key)
-			}
-			
-			// decode replicate command
-			repCmd, err := DecodeReplicateCommand(reader)
-			if err != nil {
-				return err
-			}
-
-			// apply command
-			switch repCmd.Operation {
-			case OpSet:
-				ttl := time.Duration(repCmd.TTL) * time.Second
-				f.cache.Set(repCmd.Key, repCmd.Value, ttl)
-		
-			case OpDelete:
-				f.cache.Delete(repCmd.Key)
+			} else {
+				return fmt.Errorf("unknown operation: %s", operation)
 			}
 
 			// update lastSeqNum
 			f.mu.Lock()
-			if repCmd.SeqNum > f.lastSeqNum {
-				f.lastSeqNum = repCmd.SeqNum
+			if seqNum > f.lastSeqNum {
+				f.lastSeqNum = seqNum
 			}
 			f.mu.Unlock()
 		} else if command == "SYNCEND" {
@@ -216,12 +202,10 @@ func (f *Follower) sendSyncRequest() error {
 			f.mu.Unlock()
 
 			break
-			
 		}
-
 	}
 
-	return err
+	return nil
 }
 
 func (f *Follower) processReplicationStream() error {
