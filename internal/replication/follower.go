@@ -128,6 +128,19 @@ func (f *Follower) sendSyncRequest() error {
 		command := resultSlice[0]
 
 		if command == "REPLICATE" {
+			// resultSlice = [REPLICATE, seqNum, operation, key, value?, ttl?]
+
+			if len(resultSlice) < 4 {
+				return fmt.Errorf("invalid REPLICATE command")
+			}
+
+			// extract seqNum
+			var seqNum int64
+			seqNum, ok := parseInt64(resultSlice[1])
+			if !ok {
+				return fmt.Errorf("invalid sequence number")
+			}
+			
 			// decode replicate command
 			repCmd, err := DecodeReplicateCommand(reader)
 			if err != nil {
