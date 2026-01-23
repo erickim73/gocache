@@ -140,6 +140,14 @@ func (f *Follower) sendSyncRequest() error {
 			if !ok {
 				return fmt.Errorf("invalid sequence number")
 			}
+
+			// extract operation
+			operation, ok := resultSlice[2].(string)
+			if !ok {
+				return fmt.Errorf("operation must be a string")
+			}
+
+			
 			
 			// decode replicate command
 			repCmd, err := DecodeReplicateCommand(reader)
