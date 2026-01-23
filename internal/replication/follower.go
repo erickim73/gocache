@@ -153,7 +153,26 @@ func (f *Follower) sendSyncRequest() error {
 				return fmt.Errorf("key must be a string")
 			}
 
-			
+			// handle SET vs DEL
+			if operation == OpSet {
+				if len(resultSlice) != 6 {
+					return fmt.Errorf("SET requires 6 elements")
+				}
+
+				value, ok := resultSlice[4].(string)
+				if !ok {
+					return fmt.Errorf("value must be a string")
+				}
+
+				ttl, ok := parseInt64(resultSlice[5])
+				if !ok {
+					return fmt.Errorf("ttl must be an integer")
+				}
+
+				// apply to cache
+				ttlDuration := time.Duration(ttl) * time.Second
+				f.cache.Set(key, value, ttlDuration)	
+			}
 			
 			// decode replicate command
 			repCmd, err := DecodeReplicateCommand(reader)
