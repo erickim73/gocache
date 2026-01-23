@@ -268,3 +268,35 @@ func DecodeHeartbeatCommand(reader *bufio.Reader) (*HeartbeatCommand, error) {
 func EncodeSyncEnd(seqNum int64) []byte {
 	return []byte(protocol.EncodeArray([]interface{}{CmdSyncEnd, seqNum}))
 }
+
+func DecodeSyncEnd(arr []interface{}) (int64, bool) {
+	if len(arr) != 2 {
+		return 0, false
+	}
+
+	cmd, err := arr[0].(string)
+	if !err || cmd != CmdSyncEnd {
+		return 0, false
+	}
+
+	seq, ok := parseInt64(arr[1])
+	if !ok {
+		return 0, false
+	}
+
+	return seq, true
+}
+
+func parseInt64(v interface{}) (int64, bool) {
+	switch val := v.(type){
+	case int:
+		return int64(val), true
+	case int64:
+		return val, true
+	case string:
+		num, err := strconv.ParseInt(val, 10, 64)
+		return num, err == nil
+	default:
+		return 0, false
+	}
+}

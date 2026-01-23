@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/erickim73/gocache/internal/cache"
+	"github.com/erickim73/gocache/pkg/protocol"
+
 )
 
 type Follower struct {
@@ -110,6 +112,63 @@ func (f *Follower) sendSyncRequest() error {
 	}
 
 	_, err = conn.Write(encoded)
+
+	// create a reader
+	reader := bufio.NewReader(conn)
+	for {
+		result, err := protocol.Parse(reader)
+		if err != nil {
+			return err
+		}
+
+		resultSlice, ok := result.([]interface{})
+		if !ok {
+			return fmt.Errorf("Error: result is not a slice")
+		}
+		command := resultSlice[0]
+
+		if command == "REPLICATE" {
+			// decode replicate command
+			repCmd, err := DecodeReplicateCommand(reader)
+			if err != nil {
+				return err
+			}
+
+			// apply command
+			switch repCmd.Operation {
+			case OpSet:
+				ttl := time.Duration(repCmd.TTL) * time.Second
+				f.cache.Set(repCmd.Key, repCmd.Value, ttl)
+		
+			case OpDelete:
+				f.cache.Delete(repCmd.Key)
+			}
+
+			// update lastSeqNum
+			f.mu.Lock()
+			if repCmd.SeqNum > f.lastSeqNum {
+				f.lastSeqNum = repCmd.SeqNum
+			}
+			f.mu.Unlock()
+		} else if command == "SYNCEND" {
+			seqNum, ok := DecodeSyncEnd(resultSlice)
+			if !ok {
+				return fmt.Errorf("failed to decode SYNCEND")
+			}
+
+			// update final sequence number
+			f.mu.Lock()
+			if seqNum > f.lastSeqNum {
+				f.lastSeqNum = seqNum
+			}
+			f.mu.Unlock()
+
+			break
+			
+		}
+
+	}
+
 	return err
 }
 
