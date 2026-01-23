@@ -147,6 +147,12 @@ func (f *Follower) sendSyncRequest() error {
 				return fmt.Errorf("operation must be a string")
 			}
 
+			// extract key
+			key, ok := resultSlice[3].(string)
+			if !ok {
+				return fmt.Errorf("key must be a string")
+			}
+
 			
 			
 			// decode replicate command
