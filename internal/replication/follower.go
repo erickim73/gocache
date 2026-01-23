@@ -172,6 +172,12 @@ func (f *Follower) sendSyncRequest() error {
 				// apply to cache
 				ttlDuration := time.Duration(ttl) * time.Second
 				f.cache.Set(key, value, ttlDuration)	
+			} else if operation == OpDelete {
+				if len(resultSlice) != 4 {
+					return fmt.Errorf("DELETE requires 4 elements")
+				}
+
+				f.cache.Delete(key)
 			}
 			
 			// decode replicate command
