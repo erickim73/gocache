@@ -77,7 +77,14 @@ func (f *Follower) Start() error {
 		conn := f.conn
 		f.mu.Unlock()
 
+		// initialize heartbeat state
+		f.heartbeatMu.Lock()
+		f.lastHeartbeat = time.Now()
+		f.isLeaderAlive = true
+		f.heartbeatMu.Unlock()
+
 		go f.sendHeartbeats(conn)
+		go f.monitorLeaderHealth(conn)
 
 		// read and apply replication stream
 		err = f.processReplicationStream()
