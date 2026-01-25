@@ -264,6 +264,7 @@ func (l *Leader) sendHeartbeats() {
 		}
 		encoded, err := EncodeHeartbeatCommand(heartbeat)
 		if err != nil {
+			fmt.Printf("Failed to encode heartbeat: %v\n", err)
 			continue
 		}
 
