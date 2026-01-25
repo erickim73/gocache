@@ -156,7 +156,6 @@ func (l *Leader) handleFollower(conn net.Conn) {
 
 		resultSlice, ok := result.([]interface{})
 		if !ok {
-			fmt.Errorf("Error: result is not a slice")
 			continue
 		}
 
@@ -168,17 +167,6 @@ func (l *Leader) handleFollower(conn net.Conn) {
 			f.heartbeatMu.Lock()
 			f.lastHeartbeat = time.Now()
 			f.heartbeatMu.Unlock()
-
-			ack := &HeartbeatCommand{
-				SeqNum: l.seqNum,
-				NodeID: "leader",
-			}
-			encoded, _ := EncodeHeartbeatCommand(ack)
-
-			f.mu.Lock()
-			_, _ = conn.Write(encoded)
-			f.mu.Unlock()
-
 		}
 	}
 }
