@@ -248,6 +248,8 @@ func (l *Leader) sendHeartbeats() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
+	fmt.Println("Leader heartbeat sender started")
+
 	leaderID := "leader"
 	for range ticker.C {
 		// snapshot seqNum + followers list
