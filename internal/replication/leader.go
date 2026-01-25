@@ -275,10 +275,6 @@ func (l *Leader) sendHeartbeats() {
 
 			if err != nil {
 				fmt.Printf("Heartbeat write failed to follower %s: %v\n", follower.id, err)
-
-				// close and remove follower
-				_ = follower.conn.Close()
-				l.removeFollower(follower.id)
 			}
 		}
 	}
