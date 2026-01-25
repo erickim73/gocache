@@ -309,15 +309,12 @@ func (l *Leader) monitorFollowerHealth() {
 			}
 
 			if time.Since(last) > timeout {
-				fmt.Printf("Follower %sis dead (no heartbeat for %v)\n", follower.id, time.Since(last))
+				fmt.Printf("Follower %s is dead (no heartbeat for %v)\n", follower.id, time.Since(last))
 
 				// close connection
 				follower.mu.Lock()
 				_ = follower.conn.Close()
 				follower.mu.Unlock()
-
-				// remove follower from leader list
-				l.removeFollower(follower.id)
 			}
 		}
 	}
