@@ -59,6 +59,10 @@ func (l *Leader) Start() error {
 	cfg := config.DefaultConfig()
 
 	fmt.Printf("Leader replication server listening on port %d...\n", cfg.Port+1)
+
+	// goroutine to start sending heart beats
+	go l.sendHeartbeats()
+
 	for {
 		conn, err := l.listener.Accept()
 		if err != nil {
@@ -231,11 +235,51 @@ func (l *Leader) Replicate(operation string, key string, value string, ttl int64
 		follower.mu.Lock()
 		_, err := follower.conn.Write(encoded)
 		follower.mu.Unlock()
-		
+
 		if err != nil {
 			fmt.Printf("Error sending to follower %s: %v\n", follower.id, err)
 		}
 	}
 
 	return nil
+}
+
+func (l *Leader) sendHeartbeats() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	leaderID := "leader"
+	for range ticker.C {
+		// snapshot seqNum + followers list
+		l.mu.RLock()
+		seq := l.seqNum
+		followersCopy := make([]*FollowerConn, len(l.followers))
+		copy(followersCopy, l.followers)
+		l.mu.RUnlock()
+
+		// build heartbeat command
+		heartbeat := &HeartbeatCommand{
+			SeqNum: seq,
+			NodeID: leaderID, 
+		}
+		encoded, err := EncodeHeartbeatCommand(heartbeat)
+		if err != nil {
+			continue
+		}
+
+		// send to each follower
+		for _, follower := range followersCopy {
+			follower.mu.Lock()
+			_, err := follower.conn.Write(encoded)
+			follower.mu.Unlock()
+
+			if err != nil {
+				fmt.Printf("Heartbeat write failed to follower %s: %v\n", follower.id, err)
+
+				// close and remove follower
+				_ = follower.conn.Close()
+				l.removeFollower(follower.id)
+			}
+		}
+	}
 }

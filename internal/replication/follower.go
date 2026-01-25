@@ -342,7 +342,7 @@ func (f *Follower) sendHeartbeats(conn net.Conn) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C{
+	for range ticker.C {
 		// if this goroutine's conn is no longer the active one, stop
 		f.mu.RLock()
 		current := f.conn
