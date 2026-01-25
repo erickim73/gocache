@@ -19,6 +19,7 @@ type Follower struct {
 	conn       net.Conn      // tcp connection to leader
 	lastSeqNum int64         // next sequence to assign
 	mu         sync.RWMutex  // protects conn 	
+
 	lastHeartbeat time.Time  // when did follower last hear from leader
 	heartbeatMu sync.RWMutex // protects lastHeartbeat
 	isLeaderAlive bool       // is leader currently alive
@@ -256,5 +257,44 @@ func (f *Follower) closeConn() {
 	if f.conn != nil {
 		_ = f.conn.Close()
 		f.conn = nil
+	}
+}
+
+func (f *Follower) sendHeartbeats(conn net.Conn) {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		<- ticker.C // block until next tick arrives
+		
+		// if this goroutine's conn is no longer the active one, stop
+		f.mu.Lock()
+		current := f.conn
+		seq := f.lastSeqNum
+		f.mu.RUnlock()
+
+		if current != nil || current != conn {
+			return
+		}
+
+		hb := &HeartbeatCommand{
+			SeqNum: seq,
+			NodeID: f.id,
+		}
+
+		encoded, err := EncodeHeartbeatCommand(hb)
+		if err != nil {
+			continue
+		}
+
+		f.heartbeatMu.Lock()
+		_, err = conn.Write(encoded)
+		f.heartbeatMu.Unlock()
+
+		if err != nil {
+			// connection is dead so close. 
+			f.closeConn()
+			return
+		}
 	}
 }
