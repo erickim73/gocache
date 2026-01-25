@@ -322,7 +322,6 @@ func (f *Follower) processReplicationStream() error {
 			}
 			f.mu.Unlock()
 		} else if command == CmdHeartbeat {
-			f.lastHeartbeat = time.Now()
 			continue
 		}
 		
