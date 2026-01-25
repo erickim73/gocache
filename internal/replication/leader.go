@@ -60,8 +60,9 @@ func (l *Leader) Start() error {
 
 	fmt.Printf("Leader replication server listening on port %d...\n", cfg.Port+1)
 
-	// goroutine to start sending heart beats
+	// goroutine to send and monitor heart beats 
 	go l.sendHeartbeats()
+	go l.monitorFollowerHealth()
 
 	for {
 		conn, err := l.listener.Accept()
