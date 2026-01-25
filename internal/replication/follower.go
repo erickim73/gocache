@@ -73,6 +73,12 @@ func (f *Follower) Start() error {
 			continue
 		}
 
+		f.mu.RLock()
+		conn := f.conn
+		f.mu.Unlock()
+
+		go f.sendHeartbeats(conn)
+
 		// read and apply replication stream
 		err = f.processReplicationStream()
 		if err != nil {
