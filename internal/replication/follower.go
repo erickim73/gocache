@@ -273,7 +273,7 @@ func (f *Follower) sendHeartbeats(conn net.Conn) {
 		seq := f.lastSeqNum
 		f.mu.RUnlock()
 
-		if current != nil || current != conn {
+		if current == nil || current != conn {
 			return
 		}
 
