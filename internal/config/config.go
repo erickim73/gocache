@@ -46,7 +46,7 @@ func DefaultConfig() *Config {
 		Port:             7000,
 		MaxCacheSize:     1000,
 		Role: 			  "leader",
-		LeaderAddr: 	  "localhost:7000",
+		LeaderAddr: 	  "localhost:7001",
 		AOFFileName:      "cache.aof",
 		SnapshotFileName: "cache.rdb",
 		SyncPolicy:       "everysecond",
