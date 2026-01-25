@@ -18,10 +18,10 @@ type Follower struct {
 	id         string        // follower id
 	conn       net.Conn      // tcp connection to leader
 	lastSeqNum int64         // next sequence to assign
-	mu         sync.RWMutex  // protects conn 	
+	mu         sync.RWMutex  // protects conn and lastSeqNum
 
 	lastHeartbeat time.Time  // when did follower last hear from leader
-	heartbeatMu sync.RWMutex // protects lastHeartbeat
+	heartbeatMu sync.RWMutex // protects lastHeartbeat and isLeaderAlive
 	isLeaderAlive bool       // is leader currently alive
 }	
 
@@ -288,9 +288,7 @@ func (f *Follower) sendHeartbeats(conn net.Conn) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		<- ticker.C // block until next tick arrives
-		
+	for range ticker.C{
 		// if this goroutine's conn is no longer the active one, stop
 		f.mu.Lock()
 		current := f.conn
@@ -319,6 +317,54 @@ func (f *Follower) sendHeartbeats(conn net.Conn) {
 			// connection is dead so close. 
 			f.closeConn()
 			return
+		}
+	}
+}
+
+func (f *Follower) monitorLeaderHealth(conn net.Conn) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	timeout := 15 * time.Second
+
+	for range ticker.C {
+		// stop goroutine if it's no longer responsible for conn
+		f.mu.RLock()
+		current := f.conn
+		f.mu.Unlock()
+
+		if current == nil || current != conn {
+			return
+		}
+
+		f.heartbeatMu.RLock()
+		last := f.lastHeartbeat
+		alive := f.isLeaderAlive
+		f.heartbeatMu.Unlock()
+
+		// if we've never heard from leader, skip
+		if last.IsZero() {
+			continue
+		}
+
+		if time.Since(last) > timeout {
+			if alive {
+				// alive -> dead
+				fmt.Printf("Follower %s: leader is dead (no heartbeat for %v)\n", f.id, time.Since(last))
+			}
+
+			f.heartbeatMu.Lock()
+			f.isLeaderAlive = false
+			f.heartbeatMu.Unlock()
+
+			// force reconnection / election
+			f.closeConn()
+			return
+		} else {
+			// leader is healthy
+			f.heartbeatMu.Lock()
+			f.isLeaderAlive = true
+			f.heartbeatMu.Unlock()
 		}
 	}
 }
