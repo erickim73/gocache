@@ -395,7 +395,7 @@ func (f *Follower) monitorLeaderHealth(conn net.Conn) {
 		f.heartbeatMu.RLock()
 		last := f.lastHeartbeat
 		alive := f.isLeaderAlive
-		f.heartbeatMu.Unlock()
+		f.heartbeatMu.RUnlock()
 
 		// if we've never heard from leader, skip
 		if last.IsZero() {
