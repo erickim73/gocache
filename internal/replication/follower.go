@@ -138,6 +138,10 @@ func (f *Follower) sendSyncRequest() error {
 		}
 		command := resultSlice[0]
 
+		f.heartbeatMu.Lock()
+		f.lastHeartbeat = time.Now()
+		f.heartbeatMu.Unlock()
+
 		if command == "REPLICATE" {
 			// resultSlice = [REPLICATE, seqNum, operation, key, value?, ttl?]
 
@@ -230,6 +234,10 @@ func (f *Follower) processReplicationStream() error {
 	
 	// read from leader
 	reader := bufio.NewReader(conn)
+
+	f.heartbeatMu.Lock()
+	f.lastHeartbeat = time.Now()
+	f.heartbeatMu.Unlock()
 	
 	for {
 		result, err := protocol.Parse(reader)
