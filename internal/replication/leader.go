@@ -23,6 +23,9 @@ type Leader struct {
 type FollowerConn struct {
 	conn net.Conn // tcp connection to follower
 	id   string   // follower's id
+
+	lastHeartbeat time.Time // when did we last hear from this follower
+	mu sync.RWMutex // protects lastHeartbeat
 }
 
 func NewLeader(cache *cache.Cache, aof *persistence.AOF) (*Leader, error) {
