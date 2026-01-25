@@ -75,7 +75,7 @@ func (f *Follower) Start() error {
 
 		f.mu.RLock()
 		conn := f.conn
-		f.mu.Unlock()
+		f.mu.RUnlock()
 
 		// initialize heartbeat state
 		f.heartbeatMu.Lock()
@@ -128,7 +128,9 @@ func (f *Follower) sendSyncRequest() error {
 		return err
 	}
 
+	f.mu.Lock()
 	_, err = conn.Write(encoded)
+	f.mu.Unlock()
 
 	// create a reader
 	reader := bufio.NewReader(conn)
@@ -305,7 +307,7 @@ func (f *Follower) sendHeartbeats(conn net.Conn) {
 
 	for range ticker.C{
 		// if this goroutine's conn is no longer the active one, stop
-		f.mu.Lock()
+		f.mu.RLock()
 		current := f.conn
 		seq := f.lastSeqNum
 		f.mu.RUnlock()
@@ -324,9 +326,9 @@ func (f *Follower) sendHeartbeats(conn net.Conn) {
 			continue
 		}
 
-		f.heartbeatMu.Lock()
+		f.mu.Lock()
 		_, err = conn.Write(encoded)
-		f.heartbeatMu.Unlock()
+		f.mu.Unlock()
 
 		if err != nil {
 			// connection is dead so close. 
@@ -346,7 +348,7 @@ func (f *Follower) monitorLeaderHealth(conn net.Conn) {
 		// stop goroutine if it's no longer responsible for conn
 		f.mu.RLock()
 		current := f.conn
-		f.mu.Unlock()
+		f.mu.RUnlock()
 
 		if current == nil || current != conn {
 			return
