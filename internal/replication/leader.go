@@ -23,9 +23,10 @@ type Leader struct {
 type FollowerConn struct {
 	conn net.Conn // tcp connection to follower
 	id   string   // follower's id
+	mu sync.Mutex // protects conn.Write
 
 	lastHeartbeat time.Time // when did we last hear from this follower
-	mu sync.RWMutex // protects lastHeartbeat
+	heartbeatMu sync.RWMutex // protects lastHeartbeat
 }
 
 func NewLeader(cache *cache.Cache, aof *persistence.AOF) (*Leader, error) {
@@ -155,16 +156,19 @@ func (l *Leader) handleFollower(conn net.Conn) {
 	}
 }
 
-func (l *Leader) addFollower(id string, conn net.Conn) {
+func (l *Leader) addFollower(id string, conn net.Conn) *FollowerConn {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	follower := &FollowerConn{
 		id:   id,
 		conn: conn,
+		lastHeartbeat: time.Now(),
 	}
 	l.followers = append(l.followers, follower)
+	
 	fmt.Printf("Added followers %s (total: %d)\n", id, len(l.followers))
+	return follower
 }
 
 func (l *Leader) removeFollower(id string) {
