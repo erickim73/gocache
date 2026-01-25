@@ -10,6 +10,7 @@ import (
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/config"
 	"github.com/erickim73/gocache/internal/persistence"
+	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 type Leader struct {
@@ -143,15 +144,41 @@ func (l *Leader) handleFollower(conn net.Conn) {
 	fmt.Printf("Sent snapshot to follower %s\n", syncReq.FollowerID)
 
 	// add follower to tracked list
-	l.addFollower(syncReq.FollowerID, conn)
+	f := l.addFollower(syncReq.FollowerID, conn)
 
-	// keep connection alive; detect when follower disconnects
 	for {
-		_, err := reader.ReadByte()
+		result, err := protocol.Parse(reader)
 		if err != nil {
 			fmt.Printf("Follower %s disconnected\n", syncReq.FollowerID)
 			l.removeFollower(syncReq.FollowerID)
 			return
+		}
+
+		resultSlice, ok := result.([]interface{})
+		if !ok {
+			fmt.Errorf("Error: result is not a slice")
+			continue
+		}
+
+		command := resultSlice[0]
+
+		switch command {
+		case CmdHeartbeat:
+			// update health timestamp for follower
+			f.heartbeatMu.Lock()
+			f.lastHeartbeat = time.Now()
+			f.heartbeatMu.Unlock()
+
+			ack := &HeartbeatCommand{
+				SeqNum: l.seqNum,
+				NodeID: "leader",
+			}
+			encoded, _ := EncodeHeartbeatCommand(ack)
+
+			f.mu.Lock()
+			_, _ = conn.Write(encoded)
+			f.mu.Unlock()
+
 		}
 	}
 }
