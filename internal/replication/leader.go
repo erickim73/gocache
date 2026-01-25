@@ -228,7 +228,10 @@ func (l *Leader) Replicate(operation string, key string, value string, ttl int64
 
 	// send to all followers
 	for _, follower := range followersCopy {
+		follower.mu.Lock()
 		_, err := follower.conn.Write(encoded)
+		follower.mu.Unlock()
+		
 		if err != nil {
 			fmt.Printf("Error sending to follower %s: %v\n", follower.id, err)
 		}
