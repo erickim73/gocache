@@ -12,6 +12,7 @@ import (
 	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/internal/replication"
 	"github.com/erickim73/gocache/pkg/protocol"
+	"github.com/google/uuid"
 )
 
 // handle client commands and write to aof
@@ -228,8 +229,13 @@ func main() {
 		}
 		go leader.Start()
 	} else {
-		// follower := replication.NewFollower(myCache, cfg.LeaderAddr) // STILL HAVE TO IMPLEMENT
-		// go follower.Start()
+		id := uuid.NewString()
+
+		follower, err := replication.NewFollower(myCache, cfg.LeaderAddr, id) 
+		if err != nil {
+			fmt.Printf("error creating follower: %v\n", err)
+		}
+		go follower.Start()
 	}
 	
 	// create a tcp listener on a port 
