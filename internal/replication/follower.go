@@ -125,6 +125,7 @@ func (f *Follower) sendSyncRequest() error {
 
 	// create a reader
 	reader := bufio.NewReader(conn)
+
 	for {
 		result, err := protocol.Parse(reader)
 		if err != nil {
@@ -231,28 +232,45 @@ func (f *Follower) processReplicationStream() error {
 	reader := bufio.NewReader(conn)
 	
 	for {
-		// decode replicate command
-		repCmd, err := DecodeReplicateCommand(reader)
+		result, err := protocol.Parse(reader)
 		if err != nil {
 			return err
 		}
 
-		// apply command
-		switch repCmd.Operation {
-		case OpSet:
-			ttl := time.Duration(repCmd.TTL) * time.Second
-			f.cache.Set(repCmd.Key, repCmd.Value, ttl)
-		
-		case OpDelete:
-			f.cache.Delete(repCmd.Key)
+		resultSlice, ok := result.([]interface{})
+		if !ok {
+			return fmt.Errorf("Error: result is not a slice")
 		}
+		command := resultSlice[0]
 
-		// update lastSeqNum
-		f.mu.Lock()
-		if repCmd.SeqNum > f.lastSeqNum {
-			f.lastSeqNum = repCmd.SeqNum
+		if command == "REPLICATE" {
+			// decode replicate command
+			repCmd, err := DecodeReplicateCommand(reader)
+			if err != nil {
+				return err
+			}
+
+			// apply command
+			switch repCmd.Operation {
+			case OpSet:
+				ttl := time.Duration(repCmd.TTL) * time.Second
+				f.cache.Set(repCmd.Key, repCmd.Value, ttl)
+			
+			case OpDelete:
+				f.cache.Delete(repCmd.Key)
+			}
+
+			// update lastSeqNum
+			f.mu.Lock()
+			if repCmd.SeqNum > f.lastSeqNum {
+				f.lastSeqNum = repCmd.SeqNum
+			}
+			f.mu.Unlock()
+		} else if command == CmdHeartbeat {
+			f.lastHeartbeat = time.Now()
+			continue
 		}
-		f.mu.Unlock()
+		
 	}
 }
 
