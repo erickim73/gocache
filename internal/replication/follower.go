@@ -261,26 +261,64 @@ func (f *Follower) processReplicationStream() error {
 		command := resultSlice[0]
 
 		if command == "REPLICATE" {
-			// decode replicate command
-			repCmd, err := DecodeReplicateCommand(reader)
-			if err != nil {
-				return err
+			// resultSlice = [REPLICATE, seqNum, operation, key, value?, ttl?]
+
+			if len(resultSlice) < 4 {
+				return fmt.Errorf("invalid REPLICATE command")
 			}
 
-			// apply command
-			switch repCmd.Operation {
-			case OpSet:
-				ttl := time.Duration(repCmd.TTL) * time.Second
-				f.cache.Set(repCmd.Key, repCmd.Value, ttl)
-			
-			case OpDelete:
-				f.cache.Delete(repCmd.Key)
+			// extract seqNum
+			var seqNum int64
+			seqNum, ok := ParseInt64(resultSlice[1])
+			if !ok {
+				return fmt.Errorf("invalid sequence number")
+			}
+
+			// extract operation
+			operation, ok := resultSlice[2].(string)
+			if !ok {
+				return fmt.Errorf("operation must be a string")
+			}
+
+			// extract key
+			key, ok := resultSlice[3].(string)
+			if !ok {
+				return fmt.Errorf("key must be a string")
+			}
+
+			// handle SET vs DEL
+			if operation == OpSet {
+				if len(resultSlice) != 6 {
+					return fmt.Errorf("SET requires 6 elements")
+				}
+
+				value, ok := resultSlice[4].(string)
+				if !ok {
+					return fmt.Errorf("value must be a string")
+				}
+
+				ttl, ok := ParseInt64(resultSlice[5])
+				if !ok {
+					return fmt.Errorf("ttl must be an integer")
+				}
+
+				// apply to cache
+				ttlDuration := time.Duration(ttl) * time.Second
+				f.cache.Set(key, value, ttlDuration)	
+			} else if operation == OpDelete {
+				if len(resultSlice) != 4 {
+					return fmt.Errorf("DELETE requires 4 elements")
+				}
+
+				f.cache.Delete(key)
+			} else {
+				return fmt.Errorf("unknown operation: %s", operation)
 			}
 
 			// update lastSeqNum
 			f.mu.Lock()
-			if repCmd.SeqNum > f.lastSeqNum {
-				f.lastSeqNum = repCmd.SeqNum
+			if seqNum > f.lastSeqNum {
+				f.lastSeqNum = seqNum
 			}
 			f.mu.Unlock()
 		} else if command == CmdHeartbeat {
