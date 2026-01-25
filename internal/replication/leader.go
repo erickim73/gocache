@@ -282,3 +282,43 @@ func (l *Leader) sendHeartbeats() {
 		}
 	}
 }
+
+func (l *Leader) monitorFollowerHealth() {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	timeout := 15 * time.Second
+
+	for range ticker.C {
+		// copy followers list
+		l.mu.RLock()
+		followersCopy := make([]*FollowerConn, len(l.followers))
+		copy(followersCopy, l.followers)
+		l.mu.RUnlock()
+
+		// check each followers last heartbeat
+		for _, follower := range followersCopy {
+			follower.heartbeatMu.RLock()
+			last := follower.lastHeartbeat
+			follower.heartbeatMu.RUnlock()
+			
+			// if never set, skip
+			if last.IsZero() {
+				continue
+			}
+
+			if time.Since(last) > timeout {
+				fmt.Printf("Follower %sis dead (no heartbeat for %v)\n", follower.id, time.Since(last))
+
+				// close connection
+				follower.mu.Lock()
+				_ = follower.conn.Close()
+				follower.mu.Unlock()
+
+				// remove follower from leader list
+				l.removeFollower(follower.id)
+			}
+		}
+	}
+	
+}
