@@ -40,6 +40,7 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, l
 				conn.Write([]byte(protocol.EncodeError("Length of command doesn't match")))
 				continue
 			}
+			
 
 			key := resultSlice[1].(string)
 			value := resultSlice[2].(string)
@@ -247,7 +248,7 @@ func main() {
 	}
 	defer listener.Close()
 
-	fmt.Printf("Listening on :%d...", cfg.Port)
+	fmt.Printf("Listening on :%d...\n", cfg.Port)
 
 	for {
 		// accept an incoming connection

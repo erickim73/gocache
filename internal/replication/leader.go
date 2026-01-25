@@ -161,7 +161,7 @@ func (l *Leader) addFollower(id string, conn net.Conn) {
 		conn: conn,
 	}
 	l.followers = append(l.followers, follower)
-	fmt.Printf("Added followers %s (total: %d\n)", id, len(l.followers))
+	fmt.Printf("Added followers %s (total: %d)\n", id, len(l.followers))
 }
 
 func (l *Leader) removeFollower(id string) {
