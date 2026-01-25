@@ -19,6 +19,9 @@ type Follower struct {
 	conn       net.Conn      // tcp connection to leader
 	lastSeqNum int64         // next sequence to assign
 	mu         sync.RWMutex  // protects conn 	
+	lastHeartbeat time.Time  // when did follower last hear from leader
+	heartbeatMu sync.RWMutex // protects lastHeartbeat
+	isLeaderAlive bool       // is leader currently alive
 }	
 
 func NewFollower(cache *cache.Cache, leaderAddr string, id string) (*Follower, error) {
