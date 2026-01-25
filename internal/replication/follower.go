@@ -243,16 +243,16 @@ func (f *Follower) processReplicationStream() error {
 	
 	// read from leader
 	reader := bufio.NewReader(conn)
-
-	f.heartbeatMu.Lock()
-	f.lastHeartbeat = time.Now()
-	f.heartbeatMu.Unlock()
 	
 	for {
 		result, err := protocol.Parse(reader)
 		if err != nil {
 			return err
 		}
+
+		f.heartbeatMu.Lock()
+		f.lastHeartbeat = time.Now()
+		f.heartbeatMu.Unlock()
 
 		resultSlice, ok := result.([]interface{})
 		if !ok {
