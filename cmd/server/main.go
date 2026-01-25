@@ -105,6 +105,11 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, l
 				continue
 			}
 
+			if role != "leader" {
+				conn.Write([]byte(protocol.EncodeError("READONLY You can't write against a read only replica.")))
+				continue
+			}
+
 			key := resultSlice[1].(string)
 
 			cache.Delete(key)
