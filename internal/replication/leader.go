@@ -22,12 +22,12 @@ type Leader struct {
 }
 
 type FollowerConn struct {
-	conn net.Conn // tcp connection to follower
-	id   string   // follower's id
-	mu sync.Mutex // protects conn.Write
+	conn net.Conn   // tcp connection to follower
+	id   string     // follower's id
+	mu   sync.Mutex // protects conn.Write
 
-	lastHeartbeat time.Time // when did we last hear from this follower
-	heartbeatMu sync.RWMutex // protects lastHeartbeat
+	lastHeartbeat time.Time    // when did we last hear from this follower
+	heartbeatMu   sync.RWMutex // protects lastHeartbeat
 }
 
 func NewLeader(cache *cache.Cache, aof *persistence.AOF) (*Leader, error) {
@@ -60,7 +60,7 @@ func (l *Leader) Start() error {
 
 	fmt.Printf("Leader replication server listening on port %d...\n", cfg.Port+1)
 
-	// goroutine to send and monitor heart beats 
+	// goroutine to send and monitor heart beats
 	go l.sendHeartbeats()
 	go l.monitorFollowerHealth()
 
@@ -146,6 +146,24 @@ func (l *Leader) handleFollower(conn net.Conn) {
 	// flush writer to ensure all data is sent
 	writer.Flush()
 
+	// send SYNCEND to signal end of snapshot
+	l.mu.RLock()
+	finalSeqNum := l.seqNum
+	l.mu.RUnlock()
+
+	syncEndMsg := EncodeSyncEnd(finalSeqNum)
+	_, err = writer.Write(syncEndMsg)
+	if err != nil {
+		fmt.Printf("Error sending SYNCEND: %v\n", err)
+		return
+	}
+
+	err = writer.Flush()
+	if err != nil {
+		fmt.Printf("Error flushing SYNCEND: %v\n", err)
+		return
+	}
+
 	fmt.Printf("Sent snapshot to follower %s\n", syncReq.FollowerID)
 
 	// add follower to tracked list
@@ -181,12 +199,12 @@ func (l *Leader) addFollower(id string, conn net.Conn) *FollowerConn {
 	defer l.mu.Unlock()
 
 	follower := &FollowerConn{
-		id:   id,
-		conn: conn,
+		id:            id,
+		conn:          conn,
 		lastHeartbeat: time.Now(),
 	}
 	l.followers = append(l.followers, follower)
-	
+
 	fmt.Printf("Added followers %s (total: %d)\n", id, len(l.followers))
 	return follower
 }
@@ -263,7 +281,7 @@ func (l *Leader) sendHeartbeats() {
 		// build heartbeat command
 		heartbeat := &HeartbeatCommand{
 			SeqNum: seq,
-			NodeID: leaderID, 
+			NodeID: leaderID,
 		}
 		encoded, err := EncodeHeartbeatCommand(heartbeat)
 		if err != nil {
@@ -302,7 +320,7 @@ func (l *Leader) monitorFollowerHealth() {
 			follower.heartbeatMu.RLock()
 			last := follower.lastHeartbeat
 			follower.heartbeatMu.RUnlock()
-			
+
 			// if never set, skip
 			if last.IsZero() {
 				continue
@@ -318,5 +336,5 @@ func (l *Leader) monitorFollowerHealth() {
 			}
 		}
 	}
-	
+
 }

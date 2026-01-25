@@ -9,21 +9,20 @@ import (
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/pkg/protocol"
-
 )
 
 type Follower struct {
 	cache      *cache.Cache
-	leaderAddr string        // host:replPort
-	id         string        // follower id
-	conn       net.Conn      // tcp connection to leader
-	lastSeqNum int64         // next sequence to assign
-	mu         sync.RWMutex  // protects conn and lastSeqNum
+	leaderAddr string       // host:replPort
+	id         string       // follower id
+	conn       net.Conn     // tcp connection to leader
+	lastSeqNum int64        // next sequence to assign
+	mu         sync.RWMutex // protects conn and lastSeqNum
 
-	lastHeartbeat time.Time  // when did follower last hear from leader
-	heartbeatMu sync.RWMutex // protects lastHeartbeat and isLeaderAlive
-	isLeaderAlive bool       // is leader currently alive
-}	
+	lastHeartbeat time.Time    // when did follower last hear from leader
+	heartbeatMu   sync.RWMutex // protects lastHeartbeat and isLeaderAlive
+	isLeaderAlive bool         // is leader currently alive
+}
 
 func NewFollower(cache *cache.Cache, leaderAddr string, id string) (*Follower, error) {
 	if cache == nil {
@@ -37,14 +36,14 @@ func NewFollower(cache *cache.Cache, leaderAddr string, id string) (*Follower, e
 	}
 
 	follower := &Follower{
-		cache: cache,
+		cache:      cache,
 		leaderAddr: leaderAddr,
 		lastSeqNum: 0,
-		id: id,
+		id:         id,
 	}
 
 	return follower, nil
-} 
+}
 
 func (f *Follower) Start() error {
 	backoff := 200 * time.Millisecond
@@ -64,7 +63,7 @@ func (f *Follower) Start() error {
 
 		// reset backoff after successful connection
 		backoff = 200 * time.Millisecond
-		
+
 		// send SYNC request
 		err = f.sendSyncRequest()
 		if err != nil {
@@ -83,6 +82,7 @@ func (f *Follower) Start() error {
 		f.isLeaderAlive = true
 		f.heartbeatMu.Unlock()
 
+		fmt.Println("===started goroutine for heartbeats===")
 		go f.sendHeartbeats(conn)
 		go f.monitorLeaderHealth(conn)
 
@@ -114,7 +114,7 @@ func (f *Follower) sendSyncRequest() error {
 	lastSeqNum := f.lastSeqNum
 	f.mu.RUnlock()
 
-	if conn == nil { 
+	if conn == nil {
 		return fmt.Errorf("no connection")
 	}
 
@@ -122,7 +122,7 @@ func (f *Follower) sendSyncRequest() error {
 		FollowerID: f.id,
 		LastSeqNum: lastSeqNum,
 	}
-	
+
 	encoded, err := EncodeSyncRequest(req)
 	if err != nil {
 		return err
@@ -195,7 +195,7 @@ func (f *Follower) sendSyncRequest() error {
 
 				// apply to cache
 				ttlDuration := time.Duration(ttl) * time.Second
-				f.cache.Set(key, value, ttlDuration)	
+				f.cache.Set(key, value, ttlDuration)
 			} else if operation == OpDelete {
 				if len(resultSlice) != 4 {
 					return fmt.Errorf("DELETE requires 4 elements")
@@ -240,10 +240,10 @@ func (f *Follower) processReplicationStream() error {
 	if conn == nil {
 		return fmt.Errorf("no connection to leader")
 	}
-	
+
 	// read from leader
 	reader := bufio.NewReader(conn)
-	
+
 	for {
 		result, err := protocol.Parse(reader)
 		if err != nil {
@@ -304,7 +304,7 @@ func (f *Follower) processReplicationStream() error {
 
 				// apply to cache
 				ttlDuration := time.Duration(ttl) * time.Second
-				f.cache.Set(key, value, ttlDuration)	
+				f.cache.Set(key, value, ttlDuration)
 			} else if operation == OpDelete {
 				if len(resultSlice) != 4 {
 					return fmt.Errorf("DELETE requires 4 elements")
@@ -322,9 +322,10 @@ func (f *Follower) processReplicationStream() error {
 			}
 			f.mu.Unlock()
 		} else if command == CmdHeartbeat {
+			fmt.Println("===Received heartbeat command===")
 			continue
 		}
-		
+
 	}
 }
 
@@ -363,12 +364,14 @@ func (f *Follower) sendHeartbeats(conn net.Conn) {
 			continue
 		}
 
+		fmt.Println("===Sent heartbeat command to leader===")
+
 		f.mu.Lock()
 		_, err = conn.Write(encoded)
 		f.mu.Unlock()
 
 		if err != nil {
-			// connection is dead so close. 
+			// connection is dead so close.
 			f.closeConn()
 			return
 		}
