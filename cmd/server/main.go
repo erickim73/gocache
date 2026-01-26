@@ -390,3 +390,25 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	// start client listener
 	startClientListener(myNode.Port, myCache, aof, nil, "follower")
 }
+
+// helper function to start tcp listener for client connections
+func startClientListener(port int, myCache *cache.Cache, aof *persistence.AOF, leader *replication.Leader, role string) {
+	address := fmt.Sprintf("0.0.0.0:%d", port)
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		fmt.Printf("Error creating listener: %v", err)
+		return
+	}
+	defer listener.Close()
+
+	fmt.Printf("Listening for clients on :%d...\n", port)
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Printf("Error accepting connection: %v", err)
+			continue
+		}
+		go handleConnection(conn, myCache, aof, leader, role)
+	}
+}
