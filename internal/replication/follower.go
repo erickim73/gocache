@@ -29,6 +29,9 @@ type Follower struct {
 	clusterNodes []config.NodeInfo // all nodes in cluster (empty if not in cluster mode)
 	myPriority   int               // my priority (0 if not in cluster mode)
 	myReplPort   int               // replication port for when node becomes leader
+
+	promoted   bool         // set to true when promoted to leader
+	promotedMu sync.RWMutex // protects promoted flag
 }
 
 func NewFollower(cache *cache.Cache, aof *persistence.AOF, leaderAddr string, id string, clusterNodes []config.NodeInfo, myPriority int, myReplPort int) (*Follower, error) {
@@ -63,6 +66,15 @@ func (f *Follower) Start() error {
 	maxAttemptsBeforeElection := 7 // after 7 fails, trigger election
 
 	for {
+		// check if follower has been promoted
+		f.promotedMu.RLock()
+		if f.promoted {
+			f.promotedMu.RUnlock()
+			fmt.Printf("Follower %s: Stopping follower loop (now leader)\n", f.id)
+			return nil  // exit the loop
+		}
+		f.promotedMu.RUnlock()
+
 		err := f.connectToLeader()
 		if err != nil {
 			fmt.Printf("follower %s connect failed: %v; retrying in %v\n", f.id, err, backoff)
@@ -507,6 +519,11 @@ func (f *Follower) startElection() {
 
 	// start leader's replication server
 	go leader.Start()
+
+	// set promoted flag to stop follower loop
+	f.promotedMu.Lock()
+	f.promoted = true
+	f.promotedMu.Unlock()
 
 	fmt.Printf("Follower %s is now leader\n", f.id)
 }
