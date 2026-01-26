@@ -100,7 +100,8 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 
 		// get current role and leader
 		role := nodeState.GetRole()
-		leaderAddr := nodeState.GetLeader()
+		leader := nodeState.GetLeader()
+		leaderAddr := nodeState.GetLeaderAddr()
 
 		// check if command requires leader
 		if requiresLeader(command.(string)) {
@@ -139,8 +140,8 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 			ttlSeconds := int64(ttl.Seconds()) // 0 if no TTL
 
 			// send to followers
-			if leaderAddr != nil {
-				err := leaderAddr.Replicate(replication.OpSet, key, value, ttlSeconds)
+			if leader != nil {
+				err := leader.Replicate(replication.OpSet, key, value, ttlSeconds)
 				if err != nil {
 					fmt.Printf("Error replicating SET command from leader to follower: %v\n", err)
 				}
@@ -182,8 +183,8 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 			cache.Delete(key)
 
 			// send to followers
-			if leaderAddr != nil {
-				err := leaderAddr.Replicate(replication.OpDelete, key, "", 0)
+			if leader != nil {
+				err := leader.Replicate(replication.OpDelete, key, "", 0)
 				if err != nil {
 					fmt.Printf("Error replicating DEL command from leader to follower: %v\n", err)
 				}
