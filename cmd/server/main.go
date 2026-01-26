@@ -191,6 +191,10 @@ func main() {
 	// apply flags after loading file
 	config.ApplyFlags(cfg)
 
+	
+}
+
+func startSimpleMode(cfg *config.Config) {
 	// print values to verify
 	fmt.Printf("Starting server with config:\n")
 	fmt.Printf("Port: %d\n", cfg.Port)
