@@ -254,7 +254,7 @@ func startSimpleMode(cfg *config.Config) {
 	} else {
 		id := uuid.NewString()
 
-		follower, err := replication.NewFollower(myCache, cfg.LeaderAddr, id) 
+		follower, err := replication.NewFollower(myCache, cfg.LeaderAddr, id, []config.NodeInfo{}, 0) 
 		if err != nil {
 			fmt.Printf("error creating follower: %v\n", err)
 		}
@@ -359,7 +359,7 @@ func startClusterMode(cfg *config.Config) {
 		leaderAddr := fmt.Sprintf("%s:%d", leaderNode.Host, leaderNode.ReplPort)
 		fmt.Printf("Connecting to leader %s at: %s\n\n", leaderNode.ID, leaderAddr)
 
-		startAsFollower(myNode, myCache, aof, leaderAddr)
+		startAsFollower(myNode, myCache, aof, leaderAddr, cfg.Nodes)
 	}
 }
 
@@ -378,9 +378,9 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 }
 
 // helper function to start this node as a follower
-func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persistence.AOF, leaderAddr string) {
+func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persistence.AOF, leaderAddr string, clusterNodes []config.NodeInfo) {
 	// create follower
-	follower, err := replication.NewFollower(myCache, leaderAddr, myNode.ID) 
+	follower, err := replication.NewFollower(myCache, leaderAddr, myNode.ID, clusterNodes, myNode.Priority) 
 	if err != nil {
 		fmt.Printf("error creating follower: %v\n", err)
 		return
