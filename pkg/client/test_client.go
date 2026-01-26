@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-func main() {  // Changed from test_client
+func TestClient() {  
 	conn, err := net.Dial("tcp", "localhost:6379")
 	if err != nil {
 		fmt.Printf("Error connecting to server: %v\n", err)
