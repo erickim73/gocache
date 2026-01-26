@@ -191,3 +191,15 @@ func (c *Config) GetMyNode() (*NodeInfo, error) {
 
 	return nil, fmt.Errorf("node %s not found in cluster config", c.NodeID)
 }
+
+// helper function for getting other nodes
+func (c *Config) GetOtherNodes() []NodeInfo {
+	others := []NodeInfo{}
+	for _, node := range c.Nodes {
+		if node.ID != c.NodeID {
+			others = append(others, node)
+		}
+	}
+	return others
+}
+
