@@ -23,6 +23,30 @@ type NodeState struct {
 	mu     sync.RWMutex
 }
 
+func (ns *NodeState) GetRole() string {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+	return ns.role
+}
+
+func (ns *NodeState) SetRole(role string) {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	ns.role = role
+}
+
+func (ns *NodeState) GetLeader() *replication.Leader {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+	return ns.leader
+}
+
+func (ns *NodeState) SetLeader(leader *replication.Leader) {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	ns.leader = leader
+}
+
 // handle client commands and write to aof
 func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader, role string) {
 	defer conn.Close()
