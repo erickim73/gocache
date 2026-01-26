@@ -496,8 +496,9 @@ func (f *Follower) someoneElseIsLeader() bool {
 		if err == nil {
 			_, werr := conn.Write(encoded)
 			_ = conn.Close()
-			if werr != nil {
+			if werr == nil {
 				// someone is listening and accepts SYNC
+				fmt.Printf("Follower %s: Found existing leader at %s\n", f.id, addr)
 				return true
 			}
 		} else {
