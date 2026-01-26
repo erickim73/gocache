@@ -57,11 +57,22 @@ func NewFollower(cache *cache.Cache, aof *persistence.AOF, leaderAddr string, id
 func (f *Follower) Start() error {
 	backoff := 200 * time.Millisecond
 	maxBackoff := 5 * time.Second
+	failedAttempts := 0  // track failed attempts
+	maxAttemptsBeforeElection := 10 // after 10 fails, trigger election
 
 	for {
 		err := f.connectToLeader()
 		if err != nil {
 			fmt.Printf("follower %s connect failed: %v; retrying in %v\n", f.id, err, backoff)
+
+			failedAttempts++
+
+			if failedAttempts >= maxAttemptsBeforeElection && len(f.clusterNodes) > 0 {
+				fmt.Printf("follower %s: Failed to connect %d times, triggering election\n", f.id, failedAttempts)
+                go f.startElection()
+                failedAttempts = 0  // Reset counter
+			}
+
 			time.Sleep(backoff)
 			backoff *= 2
 			if backoff > maxBackoff {
@@ -72,6 +83,7 @@ func (f *Follower) Start() error {
 
 		// reset backoff after successful connection
 		backoff = 200 * time.Millisecond
+		failedAttempts = 0
 
 		// send SYNC request
 		err = f.sendSyncRequest()
