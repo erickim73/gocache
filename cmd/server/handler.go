@@ -11,7 +11,7 @@ import (
 	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/pkg/protocol"
 	"github.com/erickim73/gocache/internal/replication"
-
+	"github.com/erickim73/gocache/internal/server"
 )
 
 
@@ -33,7 +33,7 @@ func requiresLeader(operation string) bool {
 }
 
 // handle client commands and write to aof
-func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, nodeState *NodeState) {
+func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, nodeState *server.NodeState) {
 	defer conn.Close()
 
 	// read from client

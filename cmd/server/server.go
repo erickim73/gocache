@@ -8,6 +8,7 @@ import (
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/internal/replication"
+	"github.com/erickim73/gocache/internal/server"
 	"github.com/google/uuid"
 )
 
@@ -51,10 +52,7 @@ func startSimpleMode(cfg *config.Config) {
 	}
 
 	// create node state
-	nodeState := &NodeState{
-		role: cfg.Role,
-		leader: nil,
-	}
+	nodeState, err := server.NewNodeState(cfg.Role, nil, "")
 
 	var leader *replication.Leader
 
@@ -180,10 +178,8 @@ func startClusterMode(cfg *config.Config) {
 // helper function to start this node as a leader
 func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persistence.AOF) {
 	// create node state
-	nodeState := &NodeState{
-		role: "leader",
-		leader: nil,
-	}
+	nodeState, err := server.NewNodeState("leader", nil, "")
+
 	
 	// create leader
 	leader, err := replication.NewLeader(myCache, aof, myNode.ReplPort) 
@@ -204,11 +200,7 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 // helper function to start this node as a follower
 func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persistence.AOF, leaderAddr string, clusterNodes []config.NodeInfo) {
 	// create node state
-	nodeState := &NodeState{
-		role: "follower",
-		leader: nil,
-		leaderAddr: leaderAddr,
-	}
+	nodeState, err := server.NewNodeState("follower", nil, leaderAddr)
 
 	var leaderClientAddr string
 	for _, node := range clusterNodes {
@@ -234,7 +226,7 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 }
 
 // helper function to start tcp listener for client connections
-func startClientListener(port int, myCache *cache.Cache, aof *persistence.AOF, nodeState *NodeState) {
+func startClientListener(port int, myCache *cache.Cache, aof *persistence.AOF, nodeState *server.NodeState) {
 	address := fmt.Sprintf("0.0.0.0:%d", port)
 	listener, err := net.Listen("tcp", address)
 	if err != nil {

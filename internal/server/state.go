@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"sync"
@@ -48,4 +48,12 @@ func (ns *NodeState) SetLeaderAddr(addr string) {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
 	ns.leaderAddr = addr
+}
+
+func NewNodeState(role string, leader *replication.Leader, leaderAddr string) (*NodeState, error) {
+	return &NodeState{
+		role: role,
+		leader: leader,
+		leaderAddr: leaderAddr,
+	}, nil
 }
