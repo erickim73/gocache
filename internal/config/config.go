@@ -9,18 +9,26 @@ import (
 	"github.com/erickim73/gocache/internal/persistence"
 	"gopkg.in/yaml.v3"
 )
+type NodeInfo struct {
+	ID string `yaml:"id"`
+	Host string `yaml:"host"`
+	Port int `yaml:"port"`
+	ReplPort int `yaml:"repl_port"`
+	Priority int `yaml:"priority"`
+}
 
 type yamlConfig struct {
 	Port                    int    `yaml:"port"`
 	MaxCacheSize            int    `yaml:"max_cache_size"`
 	Role 					string `yaml:"role"`
 	LeaderAddr 				string `yaml:"leader_addr"`
-	AOFFIleName             string `yaml:"aof_file"`
+	AOFFileName             string `yaml:"aof_file"`
 	SnapshotFileName        string `yaml:"snapshot_file"`
 	SyncPolicy              string `yaml:"sync_policy"`
 	SnapshotIntervalSeconds int    `yaml:"snapshot_interval_seconds"`
 	GrowthFactor            int64  `yaml:"growth_factor"`
 }
+
 
 type Config struct {
 	// server settings

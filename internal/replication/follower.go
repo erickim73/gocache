@@ -82,7 +82,7 @@ func (f *Follower) Start() error {
 		f.isLeaderAlive = true
 		f.heartbeatMu.Unlock()
 
-		fmt.Println("===started goroutine for heartbeats===")
+		fmt.Println("Started goroutine for heartbeats")
 		go f.sendHeartbeats(conn)
 		go f.monitorLeaderHealth(conn)
 
@@ -322,7 +322,6 @@ func (f *Follower) processReplicationStream() error {
 			}
 			f.mu.Unlock()
 		} else if command == CmdHeartbeat {
-			fmt.Println("===Received heartbeat command===")
 			continue
 		}
 
@@ -363,8 +362,6 @@ func (f *Follower) sendHeartbeats(conn net.Conn) {
 		if err != nil {
 			continue
 		}
-
-		fmt.Println("===Sent heartbeat command to leader===")
 
 		f.mu.Lock()
 		_, err = conn.Write(encoded)

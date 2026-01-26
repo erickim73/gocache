@@ -1,9 +1,29 @@
-port: 7000
+# cache settings
 max_cache_size: 1000
-role: leader
-leader_addr: localhost:7001
 aof_file: cache.aof
 snapshot_file: cache.rdb
 sync_policy: SyncEverySecond
 snapshot_interval_seconds: 300
 growth_factor: 2
+
+port: 7000
+role: leader
+leader_addr: localhost:7001
+
+# cluster topology
+nodes:
+  - id: "node1"
+    host: "localhost"
+    port: 7000         # redis clients connect here
+    repl_port: 7001    # other nodes connect here for replication
+    priority: 3        # highest priority = becomes leader first
+  - id: "node2"
+    host: "localhost"
+    port: 7002
+    repl_port: 7003
+    priority: 2
+  - id: "node3"
+    host: "localhost"  
+    port: 7004
+    repl_port: 7005
+    priority: 1
