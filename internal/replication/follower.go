@@ -32,9 +32,17 @@ type Follower struct {
 
 	promoted   bool         // set to true when promoted to leader
 	promotedMu sync.RWMutex // protects promoted flag
+
+	nodeStateUpdater NodeStateUpdater  
 }
 
-func NewFollower(cache *cache.Cache, aof *persistence.AOF, leaderAddr string, id string, clusterNodes []config.NodeInfo, myPriority int, myReplPort int) (*Follower, error) {
+// interface for updating node state after promotion
+type NodeStateUpdater interface {
+	SetRole(role string)
+	SetLeader(leader *Leader)
+}
+
+func NewFollower(cache *cache.Cache, aof *persistence.AOF, leaderAddr string, id string, clusterNodes []config.NodeInfo, myPriority int, myReplPort int, nodeStateUpdater NodeStateUpdater) (*Follower, error) {
 	if cache == nil {
 		return nil, fmt.Errorf("cache instance cannot be nil")
 	}
@@ -54,6 +62,7 @@ func NewFollower(cache *cache.Cache, aof *persistence.AOF, leaderAddr string, id
 		clusterNodes: clusterNodes,
 		myPriority:   myPriority,
 		myReplPort:   myReplPort,
+		nodeStateUpdater: nodeStateUpdater,
 	}
 
 	return follower, nil
@@ -515,6 +524,12 @@ func (f *Follower) startElection() {
 	if err != nil {
 		fmt.Printf("Error creating leader: %v\n", err)
 		return
+	}
+
+	// update node state using interface
+	if f.nodeStateUpdater != nil {
+		f.nodeStateUpdater.SetRole("leader")
+		f.nodeStateUpdater.SetLeader(leader)
 	}
 
 	// start leader's replication server
