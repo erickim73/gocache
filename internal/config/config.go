@@ -175,3 +175,19 @@ func ApplyFlags(cfg *Config) {
 		}
 	})
 }
+
+// helper function for seeing if cluster mode is enabled
+func (c *Config) IsClusterMode() bool {
+	return len(c.Nodes) > 0 && c.NodeID != ""
+}
+
+// helper function for getting node info from cluster config
+func (c *Config) GetMyNode() (*NodeInfo, error) {
+	for i := range c.Nodes {
+		if c.Nodes[i].ID == c.NodeID {
+			return &c.Nodes[i], nil
+		}
+	}
+
+	return nil, fmt.Errorf("node %s not found in cluster config", c.NodeID)
+}
