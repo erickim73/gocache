@@ -8,12 +8,14 @@ import (
 	"time"
 
 	"github.com/erickim73/gocache/internal/cache"
+	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/internal/config"
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 type Follower struct {
 	cache      *cache.Cache
+	aof        *persistence.AOF
 	leaderAddr string       // host:replPort
 	id         string       // follower id
 	conn       net.Conn     // tcp connection to leader
@@ -470,6 +472,18 @@ func (f *Follower) startElection() {
 
 	// close follower conn
 	f.closeConn()
+
+	// create leader with existing aof
+	leader, err := NewLeader(f.cache, f.aof)
+	if err != nil {
+		fmt.Printf("Error creating leader: %v\n", err)
+		return
+	}
+
+	// start leader's replication server
+	go leader.Start()
+
+	fmt.Printf("Follower %s is no leader\n", f.id)
 }
 
 func (f *Follower) someoneElseIsLeader() bool {
