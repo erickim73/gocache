@@ -19,6 +19,7 @@ type Leader struct {
 	seqNum    int64           // current sequence number
 	mu        sync.RWMutex
 	listener  net.Listener
+	replPort  int
 }
 
 type FollowerConn struct {
@@ -51,16 +52,14 @@ func NewLeader(cache *cache.Cache, aof *persistence.AOF, replPort int) (*Leader,
 		followers: make([]*FollowerConn, 0),
 		seqNum:    0,
 		listener:  listener,
+		replPort:  replPort,
 	}
 
 	return leader, nil
 }
 
 func (l *Leader) Start() error {
-	// load defaults
-	cfg := config.DefaultConfig()
-
-	fmt.Printf("Leader replication server listening on port %d...\n", cfg.Port+1)
+	fmt.Printf("Leader replication server listening on port %d...\n", l.replPort)
 
 	// goroutine to send and monitor heart beats
 	go l.sendHeartbeats()
