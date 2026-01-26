@@ -6,12 +6,12 @@ sync_policy: SyncEverySecond
 snapshot_interval_seconds: 300
 growth_factor: 2
 
-# simple mode. if these are set, cluster mode is ignored
+# simple mode
 port: 7000
 role: leader
 leader_addr: localhost:7001
 
-# cluster mode. if nodes are defined, this enables automatic failover
+# cluster mode
 nodes:
   - id: "node1"
     host: "localhost"
