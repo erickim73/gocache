@@ -104,14 +104,25 @@ func (c *Client) executeCommandWithRedirect(command []interface{}) (string, erro
 
 // read response from server
 func (c *Client) readResponse() (string, error) {
-	// read until we get complete response
-	response := make([]byte, 4096)
-	n, err := c.reader.Read(response)
+	// read resp responses
+	result, err := protocol.Parse(c.reader)
 	if err != nil {
 		return "", err
 	}
 
-	return string(response[:n]), nil
+	// convert parsed result back to string format
+	switch v := result.(type) {
+	case string:
+		return v, nil
+	case int64:
+		return fmt.Sprintf(":%d\r\n", v), nil
+	case []byte:
+		return string(v), nil
+	case []interface{}:
+		return fmt.Sprintf("%v", v), nil
+	default:
+		return fmt.Sprintf("%v", result), nil
+	}
 }
 
 // high level set command
@@ -123,7 +134,7 @@ func (c *Client) Set(key string, value string) error {
 	}
 
 	// check if response is OK
-	if response != "+OK\r\n" {
+	if response != "OK" {
 		return fmt.Errorf("unexpected response: %s", response)
 	}
 
@@ -138,7 +149,7 @@ func (c *Client) SetWithTTL(key string, value string, ttl int) error {
 		return err
 	}
 
-	if response != "+OK\r\n" {
+	if response != "OK" {
 		return fmt.Errorf("unexpected response: %s", response)
 	}
 
@@ -165,7 +176,7 @@ func (c *Client) Delete(key string) error {
 		return err
 	}
 
-	if response != "+OK\r\n" {
+	if response != "OK" && response != ":1\r\n" && response != "1" {
 		return fmt.Errorf("unexpected response: %s", response)
 	}
 
@@ -247,7 +258,7 @@ func main() {
 		case "QUIT", "EXIT": // allow graceful exit
 			fmt.Println("Goodbye!")
 			return
-		
+
 		default:
 			fmt.Println("Unknown command. Available SET, GET, DEL, QUIT")
 		}
