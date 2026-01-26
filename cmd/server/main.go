@@ -377,3 +377,16 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 	startClientListener(myNode.Port, myCache, aof, leader, "leader")
 }
 
+// helper function to start this node as a follower
+func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persistence.AOF, leaderAddr string) {
+	// create follower
+	follower, err := replication.NewFollower(myCache, leaderAddr, myNode.ID) 
+	if err != nil {
+		fmt.Printf("error creating follower: %v\n", err)
+		return
+	}
+	go follower.Start()
+
+	// start client listener
+	startClientListener(myNode.Port, myCache, aof, nil, "follower")
+}
