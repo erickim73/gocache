@@ -489,7 +489,7 @@ func (f *Follower) startElection() {
 	f.closeConn()
 
 	// create leader with existing aof
-	leader, err := NewLeader(f.cache, f.aof)
+	leader, err := NewLeader(f.cache, f.aof, f.myReplPort)
 	if err != nil {
 		fmt.Printf("Error creating leader: %v\n", err)
 		return
