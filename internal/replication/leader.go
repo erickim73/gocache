@@ -30,14 +30,16 @@ type FollowerConn struct {
 	heartbeatMu   sync.RWMutex // protects lastHeartbeat
 }
 
-func NewLeader(cache *cache.Cache, aof *persistence.AOF) (*Leader, error) {
-	// load defaults
-	cfg := config.DefaultConfig()
+func NewLeader(cache *cache.Cache, aof *persistence.AOF, replPort int) (*Leader, error) {
+	// if replPOrt is 0, use default
+	if replPort == 0 {
+		cfg := config.DefaultConfig()
+		replPort = cfg.Port + 1
+	}
 
-	port := cfg.Port + 1
 
 	// create a tcp listener on a port
-	address := fmt.Sprintf("0.0.0.0:%d", port)
+	address := fmt.Sprintf("0.0.0.0:%d", replPort)
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		fmt.Printf("Error creating listener: %v", err)
