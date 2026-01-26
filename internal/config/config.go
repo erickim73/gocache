@@ -18,15 +18,19 @@ type NodeInfo struct {
 }
 
 type yamlConfig struct {
-	Port                    int    `yaml:"port"`
-	MaxCacheSize            int    `yaml:"max_cache_size"`
-	Role 					string `yaml:"role"`
-	LeaderAddr 				string `yaml:"leader_addr"`
-	AOFFileName             string `yaml:"aof_file"`
-	SnapshotFileName        string `yaml:"snapshot_file"`
-	SyncPolicy              string `yaml:"sync_policy"`
-	SnapshotIntervalSeconds int    `yaml:"snapshot_interval_seconds"`
-	GrowthFactor            int64  `yaml:"growth_factor"`
+	Port                    int        `yaml:"port"`
+	MaxCacheSize            int        `yaml:"max_cache_size"`
+	Role 					string     `yaml:"role"`
+	LeaderAddr 				string     `yaml:"leader_addr"`
+	AOFFileName             string     `yaml:"aof_file"`
+	SnapshotFileName        string     `yaml:"snapshot_file"`
+	SyncPolicy              string     `yaml:"sync_policy"`
+	SnapshotIntervalSeconds int        `yaml:"snapshot_interval_seconds"`
+	GrowthFactor            int64      `yaml:"growth_factor"`
+    
+	// cluster fields to YAML parsing
+	NodeID                  string     `yaml:"node_id"`
+	Nodes                   []NodeInfo `yaml:"nodes"`
 }
 
 
@@ -47,6 +51,10 @@ type Config struct {
 	SyncPolicy       string // always, everysecond, no
 	SnapshotInterval time.Duration
 	GrowthFactor     int64
+
+	// cluster settings
+	NodeID           string
+	Nodes            []NodeInfo
 }
 
 func DefaultConfig() *Config {
@@ -60,6 +68,8 @@ func DefaultConfig() *Config {
 		SyncPolicy:       "everysecond",
 		SnapshotInterval: 5 * time.Minute,
 		GrowthFactor:     2,
+		NodeID:           "",
+		Nodes:            []NodeInfo{},
 	}
 }
 
@@ -81,11 +91,13 @@ func LoadFromFile(fileName string) (*Config, error) {
 		MaxCacheSize:     yc.MaxCacheSize,
 		Role: 			  yc.Role,
 		LeaderAddr: 	  yc.LeaderAddr,
-		AOFFileName:      yc.AOFFIleName,
+		AOFFileName:      yc.AOFFileName,
 		SnapshotFileName: yc.SnapshotFileName,
 		SyncPolicy:       yc.SyncPolicy,
 		SnapshotInterval: time.Duration(yc.SnapshotIntervalSeconds) * time.Second,
 		GrowthFactor:     yc.GrowthFactor,
+		NodeID:           yc.NodeID,
+		Nodes:            yc.Nodes,
 	}, nil
 }
 
@@ -115,7 +127,8 @@ func ParseFlags(cfg *Config) string {
 	// replication flags
 	flag.StringVar(&cfg.Role, "role", cfg.Role, "Role: leader or follower")
 	flag.StringVar(&cfg.LeaderAddr, "leader-addr", cfg.LeaderAddr, "Leader address (host: port)")
-	
+
+	flag.StringVar(&cfg.NodeID, "node-id", cfg.NodeID, "Node ID for cluster mode")
 
 	// persistence flags
 	flag.StringVar(&cfg.AOFFileName, "aof-file", cfg.AOFFileName, "AOF File path")
@@ -145,6 +158,8 @@ func ApplyFlags(cfg *Config) {
 			cfg.Role = f.Value.String()
 		case "leader-addr":
 			cfg.LeaderAddr = f.Value.String()
+		case "node-id":
+			cfg.NodeID = f.Value.String()
 		case "aof-file":
 			cfg.AOFFileName = f.Value.String()
 		case "snapshot-file":
