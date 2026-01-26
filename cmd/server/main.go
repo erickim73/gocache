@@ -401,20 +401,36 @@ func startClusterMode(cfg *config.Config) {
 
 // helper function to start this node as a leader
 func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persistence.AOF) {
+	// create node state
+	nodeState := &NodeState{
+		role: "leader",
+		leader: nil,
+	}
+	
 	// create leader
 	leader, err := replication.NewLeader(myCache, aof, myNode.ReplPort) 
 	if err != nil {
 		fmt.Printf("error creating leader: %v\n", err)
 		return
 	}
+
+	// set leader in node state
+	nodeState.SetLeader(leader)
+
 	go leader.Start()
 
 	// start client listener
-	startClientListener(myNode.Port, myCache, aof, leader, "leader")
+	startClientListener(myNode.Port, myCache, aof, leader, nodeState)
 }
 
 // helper function to start this node as a follower
 func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persistence.AOF, leaderAddr string, clusterNodes []config.NodeInfo) {
+	// create node state
+	nodeState := &NodeState{
+		role: "follower",
+		leader: nil,
+	}
+	
 	// create follower
 	follower, err := replication.NewFollower(myCache, aof, leaderAddr, myNode.ID, clusterNodes, myNode.Priority, myNode.ReplPort) 
 	if err != nil {
@@ -424,7 +440,7 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	go follower.Start()
 
 	// start client listener
-	startClientListener(myNode.Port, myCache, aof, nil, "follower")
+	startClientListener(myNode.Port, myCache, aof, nodeState)
 }
 
 // helper function to start tcp listener for client connections
