@@ -307,6 +307,11 @@ func ParseInt64(v interface{}) (int64, bool) {
 	}
 }
 
+// encodes a redirect response in RESP format
+func EncodeRedirect(host string, port int) string {
+	return fmt.Sprintf("-MOVED %s:%d\r\n", host, port)
+}
+
 // function to detect if a response is a redirect
 func IsRedirect(response string) bool {
 	return strings.HasPrefix(response, "-MOVED")
@@ -357,4 +362,9 @@ func ParseRedirect(response string) (*RedirectResponse, error) {
 		LeaderHost: host,
 		LeaderPort: port,
 	}, nil
+}
+
+// returns full address as "host:port" string
+func (r *RedirectResponse) Address() string {
+	return fmt.Sprintf("%s:%s", r.LeaderHost, r.LeaderPort)
 }
