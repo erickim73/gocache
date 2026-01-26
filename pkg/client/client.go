@@ -101,6 +101,34 @@ func (c *Client) executeCommandWithRedirect(command []interface{}) (string, erro
 	return "", fmt.Errorf("too many redirects (%d)", MaxRedirects)
 }
 
+// read response from server
+func (c *Client) readResponse() (string, error) {
+	// read until we get complete response
+	response := make([]byte, 4096)
+	n, err := c.reader.Read(response)
+	if err != nil {
+		return "", err
+	}
+
+	return string(response[:n]), nil
+}
+
+// high level set command
+func (c *Client) Set(key string, value string) error {
+	command := []interface{}{"SET", key, value}
+	response, err := c.executeCommandWithRedirect(command)
+	if err != nil {
+		return err
+	}
+
+	// check if response is OK
+	if response != "+OK\r\n" {
+		return fmt.Errorf("unexpected response: %s", response)
+	}
+
+	return nil
+}
+
 func main() {
 	// create a tcp socket
 	conn, err := net.Dial("tcp", "localhost:6379")
