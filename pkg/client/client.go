@@ -42,6 +42,65 @@ func (c *Client) Close() error {
 	return nil
 }
 
+// send a command and handle redirects automatically
+func (c *Client) executeCommandWithRedirect(command []interface{}) (string, error) {
+	redirectCount := 0
+
+	for redirectCount < MaxRedirects {
+		// encode command using protocol package
+		encoded := protocol.EncodeArray(command)
+
+		// send command
+		_, err := c.writer.WriteString(encoded)
+		if err != nil {
+			return "", fmt.Errorf("failed to write command: %v", err)
+		}
+
+		err = c.writer.Flush()
+		if err != nil {
+			return "", fmt.Errorf("failed to flush: %v", err)
+		}
+
+		// read response
+		response, err := c.readResponse()
+		if err != nil {
+			return "", fmt.Errorf("failed to read response: %v", err)
+		}
+
+		// check if response is redirect
+		if protocol.IsRedirect(response) {
+			// parse redirect
+			redirect, err := protocol.ParseRedirect(response)
+			if err != nil {
+				return "", fmt.Errorf("failed to parse redirect: %v", err)
+			}
+
+			// close current connection
+			c.Close()
+
+			// connect to leader
+			fmt.Printf("Redirecting to leader at %s...\n", redirect.Address())
+			newConn, err := net.Dial("tcp", redirect.Address())
+			if err != nil {
+				return "", fmt.Errorf("failed to connect to leader: %v", err)
+			}
+
+			// update client's connection
+			c.conn = newConn
+			c.reader = bufio.NewReader(newConn)
+			c.writer = bufio.NewWriter(newConn)
+
+			redirectCount++
+			continue // retry with new connection
+		}
+
+		// not a redirect, return response
+		return response, nil
+	}
+
+	return "", fmt.Errorf("too many redirects (%d)", MaxRedirects)
+}
+
 func main() {
 	// create a tcp socket
 	conn, err := net.Dial("tcp", "localhost:6379")
