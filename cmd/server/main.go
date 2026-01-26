@@ -362,3 +362,18 @@ func startClusterMode(cfg *config.Config) {
 		startAsFollower(myNode, myCache, aof, leaderAddr)
 	}
 }
+
+// helper function to start this node as a leader
+func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persistence.AOF) {
+	// create leader
+	leader, err := replication.NewLeader(myCache, aof) 
+	if err != nil {
+		fmt.Printf("error creating leader: %v\n", err)
+		return
+	}
+	go leader.Start()
+
+	// start client listener
+	startClientListener(myNode.Port, myCache, aof, leader, "leader")
+}
+
