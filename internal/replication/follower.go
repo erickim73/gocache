@@ -25,7 +25,7 @@ type Follower struct {
 	isLeaderAlive bool         // is leader currently alive
 
 	clusterNodes []config.NodeInfo // all nodes in cluster (empty if not in cluster mode)
-	myPriority int                 // my priority (0 if not in cluster mode)
+	myPriority   int               // my priority (0 if not in cluster mode)
 }
 
 func NewFollower(cache *cache.Cache, leaderAddr string, id string, clusterNodes []config.NodeInfo, myPriority int) (*Follower, error) {
@@ -40,12 +40,12 @@ func NewFollower(cache *cache.Cache, leaderAddr string, id string, clusterNodes 
 	}
 
 	follower := &Follower{
-		cache:      cache,
-		leaderAddr: leaderAddr,
-		lastSeqNum: 0,
-		id:         id,
+		cache:        cache,
+		leaderAddr:   leaderAddr,
+		lastSeqNum:   0,
+		id:           id,
 		clusterNodes: clusterNodes,
-		myPriority: myPriority,
+		myPriority:   myPriority,
 	}
 
 	return follower, nil
@@ -419,6 +419,7 @@ func (f *Follower) monitorLeaderHealth(conn net.Conn) {
 
 			// force reconnection / election
 			f.closeConn()
+			go f.startElection()
 			return
 		} else {
 			// leader is healthy
@@ -469,4 +470,40 @@ func (f *Follower) startElection() {
 
 	// close follower conn
 	f.closeConn()
+}
+
+func (f *Follower) someoneElseIsLeader() bool {
+	timeout := 300 * time.Millisecond
+
+	for _, node := range f.clusterNodes {
+		if node.ID == f.id {
+			continue
+		}
+
+		addr := fmt.Sprintf("%s:%d", node.Host, node.ReplPort)
+
+		conn, err := net.DialTimeout("tcp", addr, timeout)
+		if err != nil {
+			continue
+		}
+
+		// try sending sync request; real reader will accept it
+		req := &SyncRequest{
+			FollowerID: f.id,
+			LastSeqNum: f.lastSeqNum,
+		}
+		encoded, err := EncodeSyncRequest(req)
+		if err == nil {
+			_, werr := conn.Write(encoded)
+			_ = conn.Close()
+			if werr != nil {
+				// someone is listening and accepts SYNC
+				return true
+			}
+		} else {
+			_ = conn.Close()
+		}
+	}
+	
+	return false
 }
