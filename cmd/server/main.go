@@ -6,6 +6,7 @@ import (
 	"net"
 	"strconv"
 	"time"
+	"sync"
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/config"
@@ -14,6 +15,13 @@ import (
 	"github.com/erickim73/gocache/pkg/protocol"
 	"github.com/google/uuid"
 )
+
+// NodeState holds mutable state that can change during runtime
+type NodeState struct {
+	role   string
+	leader *replication.Leader
+	mu     sync.RWMutex
+}
 
 // handle client commands and write to aof
 func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader, role string) {
