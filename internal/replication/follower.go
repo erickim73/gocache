@@ -28,9 +28,10 @@ type Follower struct {
 
 	clusterNodes []config.NodeInfo // all nodes in cluster (empty if not in cluster mode)
 	myPriority   int               // my priority (0 if not in cluster mode)
+	myReplPort   int               // replication port for when node becomes leader
 }
 
-func NewFollower(cache *cache.Cache, aof *persistence.AOF, leaderAddr string, id string, clusterNodes []config.NodeInfo, myPriority int) (*Follower, error) {
+func NewFollower(cache *cache.Cache, aof *persistence.AOF, leaderAddr string, id string, clusterNodes []config.NodeInfo, myPriority int, myReplPort int) (*Follower, error) {
 	if cache == nil {
 		return nil, fmt.Errorf("cache instance cannot be nil")
 	}
@@ -49,6 +50,7 @@ func NewFollower(cache *cache.Cache, aof *persistence.AOF, leaderAddr string, id
 		id:           id,
 		clusterNodes: clusterNodes,
 		myPriority:   myPriority,
+		myReplPort:   myReplPort,
 	}
 
 	return follower, nil
