@@ -476,11 +476,21 @@ func (f *Follower) startElection() {
 	fmt.Printf("Follower %s: Waiting %v before attempting leadership\n", f.id, waitTime)
 	time.Sleep(waitTime)
 
+	
 	// after waiting, check if someone else already became leader
-	if f.someoneElseIsLeader() {
+	newLeaderAddr := f.findNewLeader() // returns address of new leader
+	if newLeaderAddr != "" {
 		fmt.Printf("Follower %s: Detected existing leader, aborting election\n", f.id)
+
+		// update leader address to point to new leader
+		f.mu.Lock()
+		f.leaderAddr = newLeaderAddr
+		f.mu.Unlock()
+
+		fmt.Printf("Follower %s: Updated leader address to %s\n", f.id, newLeaderAddr)
 		return
 	}
+	
 
 	// win election: promote
 	fmt.Printf("Follower %s: Promoting self to leader\n", f.id)
@@ -501,7 +511,7 @@ func (f *Follower) startElection() {
 	fmt.Printf("Follower %s is now leader\n", f.id)
 }
 
-func (f *Follower) someoneElseIsLeader() bool {
+func (f *Follower) findNewLeader() string {
 	timeout := 300 * time.Millisecond
 
 	for _, node := range f.clusterNodes {
@@ -528,12 +538,13 @@ func (f *Follower) someoneElseIsLeader() bool {
 			if werr == nil {
 				// someone is listening and accepts SYNC
 				fmt.Printf("Follower %s: Found existing leader at %s\n", f.id, addr)
-				return true
+				return addr
 			}
 		} else {
 			_ = conn.Close()
 		}
 	}
 	
-	return false
+	// no leader found
+	return ""
 }
