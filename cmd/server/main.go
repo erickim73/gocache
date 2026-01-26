@@ -64,11 +64,11 @@ func (ns *NodeState) SetLeaderAddr(addr string) {
 func requiresLeader(operation string) bool {
 	switch operation {
 	case "SET", "DEL":
-		return true
+		return true // write operations need leader
 	case "GET":
-		return false
+		return false // reads can be served by followers
 	default:
-		return false
+		return true // unknown operations go to leader for safety
 	}
 }
 
