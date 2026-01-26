@@ -278,6 +278,12 @@ func startSimpleMode(cfg *config.Config) {
 		return
 	}
 
+	// create node state
+	nodeState := &NodeState{
+		role: cfg.Role,
+		leader: nil,
+	}
+
 	var leader *replication.Leader
 
 	if cfg.Role == "leader" {
@@ -290,7 +296,7 @@ func startSimpleMode(cfg *config.Config) {
 	} else {
 		id := uuid.NewString()
 
-		follower, err := replication.NewFollower(myCache, aof, cfg.LeaderAddr, id, []config.NodeInfo{}, 0, 0) 
+		follower, err := replication.NewFollower(myCache, aof, cfg.LeaderAddr, id, []config.NodeInfo{}, 0, 0, nodeState) 
 		if err != nil {
 			fmt.Printf("error creating follower: %v\n", err)
 		}
@@ -317,7 +323,7 @@ func startSimpleMode(cfg *config.Config) {
 		}
 
 		// handle connection in a separate goroutine
-		go handleConnection(conn, myCache, aof, leader, cfg.Role)
+		go handleConnection(conn, myCache, aof, nodeState)
 	}
 }
 
@@ -420,7 +426,7 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 	go leader.Start()
 
 	// start client listener
-	startClientListener(myNode.Port, myCache, aof, leader, nodeState)
+	startClientListener(myNode.Port, myCache, aof, nodeState)
 }
 
 // helper function to start this node as a follower
@@ -432,7 +438,7 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	}
 	
 	// create follower
-	follower, err := replication.NewFollower(myCache, aof, leaderAddr, myNode.ID, clusterNodes, myNode.Priority, myNode.ReplPort) 
+	follower, err := replication.NewFollower(myCache, aof, leaderAddr, myNode.ID, clusterNodes, myNode.Priority, myNode.ReplPort, nodeState) 
 	if err != nil {
 		fmt.Printf("error creating follower: %v\n", err)
 		return
@@ -444,7 +450,7 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 }
 
 // helper function to start tcp listener for client connections
-func startClientListener(port int, myCache *cache.Cache, aof *persistence.AOF, leader *replication.Leader, nodeState *NodeState) {
+func startClientListener(port int, myCache *cache.Cache, aof *persistence.AOF, nodeState *NodeState) {
 	address := fmt.Sprintf("0.0.0.0:%d", port)
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
