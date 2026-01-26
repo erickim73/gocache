@@ -6,7 +6,19 @@ import (
 	"fmt"
 	"os"
 	"bufio"
+
+	"github.com/erickim73/gocache/pkg/protocol"
 )
+
+// number of redirects to follow
+const MaxRedirects = 5
+
+// client struct to hold connection state
+type Client struct {
+	conn   net.Conn
+	reader *bufio.Reader
+	writer *bufio.Writer
+}
 
 func main() {
 	// create a tcp socket
