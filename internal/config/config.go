@@ -204,6 +204,22 @@ func (c *Config) GetOtherNodes() []NodeInfo {
 }
 
 // helper function for finding highest priority node
+func (c *Config) GetHighestPriorityNode() *NodeInfo {
+	if len(c.Nodes) == 0 {
+		return nil
+	}
+
+	highest := &c.Nodes[0]
+	for i := range c.Nodes {
+		if c.Nodes[i].Priority > highest.Priority {
+			highest = &c.Nodes[i]
+		}
+	}
+
+	return highest
+}
+
+// helper function for seeing if node is highest priority
 func (c *Config) AmIHighestPriority() bool {
 	myNode, err := c.GetMyNode()
 	if err != nil {
