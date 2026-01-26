@@ -275,3 +275,81 @@ func startSimpleMode(cfg *config.Config) {
 		go handleConnection(conn, myCache, aof, leader, cfg.Role)
 	}
 }
+
+func startClusterMode(cfg *config.Config) {
+	// get my node info
+	myNode, err := cfg.GetMyNode()
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	// print values to verify
+	fmt.Printf("Starting server with config:\n")
+	fmt.Printf("MaxCacheSize: %d\n", cfg.MaxCacheSize)
+	fmt.Printf("AOFFileName: %s\n", cfg.AOFFileName)
+	fmt.Printf("SnapshotFileName: %s\n", cfg.SnapshotFileName)
+	fmt.Printf("SyncPolicy: %s\n", cfg.SyncPolicy)
+	fmt.Printf("SnapshotInterval: %v\n", cfg.SnapshotInterval)
+	fmt.Printf("GrowthFactor: %d\n", cfg.GrowthFactor)
+
+	fmt.Printf("My node info:\n")
+	fmt.Printf("  ID: %s\n", myNode.ID)
+	fmt.Printf("  Client port: %d\n", myNode.Port)
+	fmt.Printf("  Replication port: %d\n", myNode.ReplPort)
+	fmt.Printf("  Priority: %d\n", myNode.Priority)
+
+	// show cluster topology
+	fmt.Printf("\nCluster topology (%d nodes):\n", len(cfg.Nodes))
+	for _, node := range cfg.Nodes {
+		marker := ""
+		if node.ID == cfg.NodeID {
+			marker = " <- ME"
+		}
+		fmt.Printf("  - %s (priority: %d, port: %d)%s\n", node.ID, node.Priority, node.Port, marker)
+	}
+
+	// create a cache
+	myCache, err := cache.New(cfg.MaxCacheSize)
+	if err != nil {
+		fmt.Printf("error creating new cache: %v\n", err)
+		return
+	}
+
+	// create aof
+	aof, err := persistence.NewAOF(
+		cfg.AOFFileName,
+		cfg.SnapshotFileName,
+		cfg.GetSyncPolicy(),
+		myCache,
+		cfg.GrowthFactor,
+	)
+	if err != nil {
+		fmt.Printf("error creating new aof: %v\n", err)
+		return
+	}
+	defer aof.Close()
+
+	// recovery
+	err = recoverAOF(myCache, aof, cfg.AOFFileName, cfg.SnapshotFileName)
+	if err != nil {
+		fmt.Printf("error recovering from aof: %v\n", err)
+		return
+	}
+
+	// determine initial role based on priority
+	// highest priority node starts as leader
+	if cfg.AmIHighestPriority() {
+		fmt.Printf("\n I have highest priority - starting as leader\n\n")
+		startAsLeader(myNode, myCache, aof)
+	} else {
+		fmt.Printf("\n Not highest priority - starting as follower")
+
+		// find the leader
+		leaderNode := cfg.GetHighestPriorityNode()
+		leaderAddr := fmt.Sprintf("%s:%d", leaderNode.Host, leaderNode.ReplPort)
+		fmt.Printf("Connecting to leader %s at: %s\n\n", leaderNode.ID, leaderAddr)
+
+		startAsFollower(myNode, myCache, aof, leaderAddr)
+	}
+}
