@@ -10,11 +10,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 type NodeInfo struct {
-	ID string `yaml:"id"`
-	Host string `yaml:"host"`
-	Port int `yaml:"port"`
-	ReplPort int `yaml:"repl_port"`
-	Priority int `yaml:"priority"`
+	ID       string `yaml:"id"`
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	ReplPort int    `yaml:"repl_port"`
+	Priority int    `yaml:"priority"`
 }
 
 type yamlConfig struct {
