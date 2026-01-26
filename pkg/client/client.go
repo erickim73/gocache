@@ -129,6 +129,48 @@ func (c *Client) Set(key string, value string) error {
 	return nil
 }
 
+// high level set command with ttl
+func (c *Client) SetWithTTL(key string, value string, ttl int) error {
+	command := []interface{}{"SET", key, value, fmt.Sprintf("%d", ttl)}
+	response, err := c.executeCommandWithRedirect(command)
+	if err != nil {
+		return err
+	}
+
+	if response != "+OK\r\n" {
+		return fmt.Errorf("unexpected response: %s", response)
+	}
+
+	return nil
+}
+
+// high level get command
+func (c *Client) Get(key string) (string, error) {
+	command := []interface{}{"GET", key}
+	response, err := c.executeCommandWithRedirect(command)
+	if err != nil {
+		return "", err
+	}
+
+	// parse bulk string response
+	return response, nil
+}
+
+// high level delete command
+func (c *Client) Delete(key string) error {
+	command := []interface{}{"DEL", key}
+	response, err := c.executeCommandWithRedirect(command)
+	if err != nil {
+		return err
+	}
+
+	if response != "+OK\r\n" {
+		return fmt.Errorf("unexpected response: %s", response)
+	}
+
+	return nil
+}
+
 func main() {
 	// create a tcp socket
 	conn, err := net.Dial("tcp", "localhost:6379")
