@@ -60,7 +60,7 @@ func (f *Follower) Start() error {
 	backoff := 200 * time.Millisecond
 	maxBackoff := 5 * time.Second
 	failedAttempts := 0  // track failed attempts
-	maxAttemptsBeforeElection := 10 // after 10 fails, trigger election
+	maxAttemptsBeforeElection := 7 // after 7 fails, trigger election
 
 	for {
 		err := f.connectToLeader()
