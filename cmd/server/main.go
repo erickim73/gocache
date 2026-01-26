@@ -191,6 +191,15 @@ func main() {
 	// apply flags after loading file
 	config.ApplyFlags(cfg)
 
+	// determine which mode we're in 
+	if cfg.IsClusterMode() {
+		fmt.Println("Starting in CLUSTER mode")
+		startClusterMode(cfg)
+	} else {
+		fmt.Println("Starting in SIMPLE mode")
+		startSimpleMode(cfg)
+	}
+
 	
 }
 
