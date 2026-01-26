@@ -18,9 +18,10 @@ import (
 
 // NodeState holds mutable state that can change during runtime
 type NodeState struct {
-	role   string
-	leader *replication.Leader
-	mu     sync.RWMutex
+	role       string
+	leader     *replication.Leader  // only set when this node is the leader
+	leaderAddr string 
+	mu         sync.RWMutex
 }
 
 func (ns *NodeState) GetRole() string {
@@ -45,6 +46,18 @@ func (ns *NodeState) SetLeader(leader *replication.Leader) {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
 	ns.leader = leader
+}
+
+func (ns *NodeState) GetLeaderAddr() string {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+	return ns.leaderAddr
+}
+
+func (ns *NodeState) SetLeaderAddr(addr string) {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	ns.leaderAddr = addr
 }
 
 
