@@ -203,3 +203,13 @@ func (c *Config) GetOtherNodes() []NodeInfo {
 	return others
 }
 
+// helper function for finding highest priority node
+func (c *Config) AmIHighestPriority() bool {
+	myNode, err := c.GetMyNode()
+	if err != nil {
+		return false
+	}
+
+	highest := c.GetHighestPriorityNode()
+	return highest != nil && highest.ID == myNode.ID
+}
