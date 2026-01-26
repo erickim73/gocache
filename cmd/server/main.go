@@ -254,7 +254,7 @@ func startSimpleMode(cfg *config.Config) {
 	} else {
 		id := uuid.NewString()
 
-		follower, err := replication.NewFollower(myCache, cfg.LeaderAddr, id, []config.NodeInfo{}, 0) 
+		follower, err := replication.NewFollower(myCache, aof, cfg.LeaderAddr, id, []config.NodeInfo{}, 0) 
 		if err != nil {
 			fmt.Printf("error creating follower: %v\n", err)
 		}
@@ -380,7 +380,7 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 // helper function to start this node as a follower
 func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persistence.AOF, leaderAddr string, clusterNodes []config.NodeInfo) {
 	// create follower
-	follower, err := replication.NewFollower(myCache, leaderAddr, myNode.ID, clusterNodes, myNode.Priority) 
+	follower, err := replication.NewFollower(myCache, aof, leaderAddr, myNode.ID, clusterNodes, myNode.Priority) 
 	if err != nil {
 		fmt.Printf("error creating follower: %v\n", err)
 		return

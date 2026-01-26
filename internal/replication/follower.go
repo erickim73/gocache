@@ -30,7 +30,7 @@ type Follower struct {
 	myPriority   int               // my priority (0 if not in cluster mode)
 }
 
-func NewFollower(cache *cache.Cache, leaderAddr string, id string, clusterNodes []config.NodeInfo, myPriority int) (*Follower, error) {
+func NewFollower(cache *cache.Cache, aof *persistence.AOF, leaderAddr string, id string, clusterNodes []config.NodeInfo, myPriority int) (*Follower, error) {
 	if cache == nil {
 		return nil, fmt.Errorf("cache instance cannot be nil")
 	}
@@ -43,6 +43,7 @@ func NewFollower(cache *cache.Cache, leaderAddr string, id string, clusterNodes 
 
 	follower := &Follower{
 		cache:        cache,
+		aof:          aof,
 		leaderAddr:   leaderAddr,
 		lastSeqNum:   0,
 		id:           id,
@@ -483,7 +484,7 @@ func (f *Follower) startElection() {
 	// start leader's replication server
 	go leader.Start()
 
-	fmt.Printf("Follower %s is no leader\n", f.id)
+	fmt.Printf("Follower %s is now leader\n", f.id)
 }
 
 func (f *Follower) someoneElseIsLeader() bool {
