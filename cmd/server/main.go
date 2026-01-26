@@ -466,7 +466,19 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	nodeState := &NodeState{
 		role: "follower",
 		leader: nil,
+		leaderAddr: leaderAddr,
 	}
+
+	var leaderClientAddr string
+	for _, node := range clusterNodes {
+		// find leader node
+		if node.Priority == getHighestPriority(clusterNodes) {
+			leaderClientAddr = fmt.Sprintf("%s:%d", node.Host, node.Port)
+			break
+		}
+	}
+
+	nodeState.SetLeaderAddr(leaderClientAddr)
 	
 	// create follower
 	follower, err := replication.NewFollower(myCache, aof, leaderAddr, myNode.ID, clusterNodes, myNode.Priority, myNode.ReplPort, nodeState) 
@@ -500,4 +512,16 @@ func startClientListener(port int, myCache *cache.Cache, aof *persistence.AOF, n
 		}
 		go handleConnection(conn, myCache, aof, nodeState)
 	}
+}
+
+func getHighestPriority(nodes []config.NodeInfo) int {
+	highest := 0
+	
+	for _, node := range nodes {
+		if node.Priority > highest {
+			highest = node.Priority
+		}
+	}
+	
+	return highest
 }
