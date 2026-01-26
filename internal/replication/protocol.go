@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/erickim73/gocache/pkg/protocol"
 )
@@ -40,11 +39,6 @@ type ReplicateCommand struct {
 type HeartbeatCommand struct {
 	SeqNum int64
 	NodeID string
-}
-
-type RedirectResponse struct {
-	LeaderHost string
-	LeaderPort string
 }
 
 func EncodeSyncRequest(req *SyncRequest) ([]byte, error) {
@@ -307,64 +301,3 @@ func ParseInt64(v interface{}) (int64, bool) {
 	}
 }
 
-// encodes a redirect response in RESP format
-func EncodeRedirect(host string, port int) string {
-	return fmt.Sprintf("-MOVED %s:%d\r\n", host, port)
-}
-
-// function to detect if a response is a redirect
-func IsRedirect(response string) bool {
-	return strings.HasPrefix(response, "-MOVED")
-}
-
-// parses a redirect response into host and port components. Format: "-MOVED host:port\r\n". Returns error if format is invalid
-func ParseRedirect(response string) (*RedirectResponse, error) {
-	// validate that it's actually a redirect
-	if !IsRedirect(response) {
-		return nil, fmt.Errorf("not a redirect response: %s", response)
-	}
-
-	// remove "-MOVED "
-	withoutPrefix := strings.TrimPrefix(response, "-MOVED ")
-
-	// remove "\r\n"
-	withoutSuffix := strings.TrimSuffix(withoutPrefix, "\r\n")
-
-	// split on ":" to separate host and port
-	parts := strings.Split(withoutSuffix, ":")
-
-	// validate that we got 2 parts: host and port
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid redirect format, expected 'host:port' but got: %s", withoutSuffix)
-	}
-
-	host := parts[0]
-	port := parts[1]
-
-	// validate host isn't empty
-	if host == "" {
-		return nil, fmt.Errorf("invalid redirect: empty host")
-	}
-
-	// validate port isn't empty
-	if port == "" {
-		return nil, fmt.Errorf("invalid redirect: empty port")
-	}
-
-	// validate port is a number
-	_, err := strconv.Atoi(port)
-	if err != nil {
-		return nil, fmt.Errorf("invalid redirect: port must be a number got %s", port)
-	}
-
-	// return parsed redirect response
-	return &RedirectResponse{
-		LeaderHost: host,
-		LeaderPort: port,
-	}, nil
-}
-
-// returns full address as "host:port" string
-func (r *RedirectResponse) Address() string {
-	return fmt.Sprintf("%s:%s", r.LeaderHost, r.LeaderPort)
-}
