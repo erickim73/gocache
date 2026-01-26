@@ -428,3 +428,45 @@ func (f *Follower) monitorLeaderHealth(conn net.Conn) {
 		}
 	}
 }
+
+func (f *Follower) startElection() {
+	fmt.Printf("Follower %s: Starting election (my priority: %d)\n", f.id, f.myPriority)
+
+	// don't have cluster info, can't elect
+	if len(f.clusterNodes) == 0 || f.myPriority == 0 {
+		fmt.Printf("Follower %s: No cluster config/priority, skipping election\n", f.id)
+		return
+	}
+
+	// find maxPriority
+	maxPriority := 0
+	for _, n := range f.clusterNodes {
+		if n.Priority > maxPriority {
+			maxPriority = n.Priority
+		}
+	}
+
+	// compute wait time
+	delayPerPriority := 1 * time.Second
+	waitSteps := maxPriority - f.myPriority
+	if waitSteps < 0 {
+		waitSteps = 0
+	}
+
+	waitTime := time.Duration(waitSteps) * delayPerPriority
+
+	fmt.Printf("Follower %s: Waiting %v before attempting leadership\n", f.id, waitTime)
+	time.Sleep(waitTime)
+
+	// after waiting, check if someone else already became leader
+	if f.someoneElseIsLeader() {
+		fmt.Printf("Follower %s: Detected existing leader, aborting election\n", f.id)
+		return
+	}
+
+	// win election: promote
+	fmt.Printf("Follower %s: Promoting self to leader\n", f.id)
+
+	// close follower conn
+	f.closeConn()
+}

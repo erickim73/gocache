@@ -217,7 +217,7 @@ func (c *Config) GetHighestPriorityNode() *NodeInfo {
 	}
 
 	return highest
-}
+}	
 
 // helper function for seeing if node is highest priority
 func (c *Config) AmIHighestPriority() bool {
