@@ -74,7 +74,7 @@ func requiresLeader(operation string) bool {
 
 const (
 	// redis-style redirect error
-	ErrMovedFormat = "-MOVED %s:%d\r\n"
+	ErrMovedFormat = "-MOVED %s\r\n"
 )
 
 
@@ -100,16 +100,21 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 
 		// get current role and leader
 		role := nodeState.GetRole()
-		leader := nodeState.GetLeader()
+		leaderAddr := nodeState.GetLeader()
+
+		// check if command requires leader
+		if requiresLeader(command.(string)) {
+			// if node isn't leader, redirect client
+			if role != "leader" {
+				redirect := fmt.Sprintf(ErrMovedFormat, leaderAddr)
+				conn.Write([]byte(redirect))
+				continue
+			}
+		}
 
 		if command == "SET" {
 			if len(resultSlice) < 3 || len(resultSlice) > 4 {
 				conn.Write([]byte(protocol.EncodeError("Length of command doesn't match")))
-				continue
-			}
-			
-			if role != "leader" {
-				conn.Write([]byte(protocol.EncodeError("READONLY You can't write against a read only replica.")))
 				continue
 			}
 
@@ -134,8 +139,8 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 			ttlSeconds := int64(ttl.Seconds()) // 0 if no TTL
 
 			// send to followers
-			if leader != nil {
-				err := leader.Replicate(replication.OpSet, key, value, ttlSeconds)
+			if leaderAddr != nil {
+				err := leaderAddr.Replicate(replication.OpSet, key, value, ttlSeconds)
 				if err != nil {
 					fmt.Printf("Error replicating SET command from leader to follower: %v\n", err)
 				}
@@ -172,18 +177,13 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 				continue
 			}
 
-			if role != "leader" {
-				conn.Write([]byte(protocol.EncodeError("READONLY You can't write against a read only replica.")))
-				continue
-			}
-
 			key := resultSlice[1].(string)
 
 			cache.Delete(key)
 
 			// send to followers
-			if leader != nil {
-				err := leader.Replicate(replication.OpDelete, key, "", 0)
+			if leaderAddr != nil {
+				err := leaderAddr.Replicate(replication.OpDelete, key, "", 0)
 				if err != nil {
 					fmt.Printf("Error replicating DEL command from leader to follower: %v\n", err)
 				}
