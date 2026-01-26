@@ -47,6 +47,13 @@ func (ns *NodeState) SetLeader(leader *replication.Leader) {
 	ns.leader = leader
 }
 
+
+const (
+	// redis-style redirect error
+	ErrMovedFormat = "-MOVED %s:%d\r\n"
+)
+
+
 // handle client commands and write to aof
 func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, nodeState *NodeState) {
 	defer conn.Close()
