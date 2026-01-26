@@ -48,7 +48,7 @@ func (ns *NodeState) SetLeader(leader *replication.Leader) {
 }
 
 // handle client commands and write to aof
-func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader, role string) {
+func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, nodeState *NodeState) {
 	defer conn.Close()
 
 	// read from client
@@ -66,6 +66,10 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, l
 			return
 		}
 		command := resultSlice[0]
+
+		// get current role and leader
+		role := nodeState.GetRole()
+		leader := nodeState.GetLeader()
 
 		if command == "SET" {
 			if len(resultSlice) < 3 || len(resultSlice) > 4 {
@@ -424,7 +428,7 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 }
 
 // helper function to start tcp listener for client connections
-func startClientListener(port int, myCache *cache.Cache, aof *persistence.AOF, leader *replication.Leader, role string) {
+func startClientListener(port int, myCache *cache.Cache, aof *persistence.AOF, leader *replication.Leader, nodeState *NodeState) {
 	address := fmt.Sprintf("0.0.0.0:%d", port)
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
@@ -441,6 +445,6 @@ func startClientListener(port int, myCache *cache.Cache, aof *persistence.AOF, l
 			fmt.Printf("Error accepting connection: %v", err)
 			continue
 		}
-		go handleConnection(conn, myCache, aof, leader, role)
+		go handleConnection(conn, myCache, aof, nodeState)
 	}
 }
