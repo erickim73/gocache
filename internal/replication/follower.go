@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/erickim73/gocache/internal/cache"
+	"github.com/erickim73/gocache/internal/config"
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
@@ -22,9 +23,12 @@ type Follower struct {
 	lastHeartbeat time.Time    // when did follower last hear from leader
 	heartbeatMu   sync.RWMutex // protects lastHeartbeat and isLeaderAlive
 	isLeaderAlive bool         // is leader currently alive
+
+	clusterNodes []config.NodeInfo // all nodes in cluster (empty if not in cluster mode)
+	myPriority int                 // my priority (0 if not in cluster mode)
 }
 
-func NewFollower(cache *cache.Cache, leaderAddr string, id string) (*Follower, error) {
+func NewFollower(cache *cache.Cache, leaderAddr string, id string, clusterNodes []config.NodeInfo, myPriority int) (*Follower, error) {
 	if cache == nil {
 		return nil, fmt.Errorf("cache instance cannot be nil")
 	}
@@ -40,6 +44,8 @@ func NewFollower(cache *cache.Cache, leaderAddr string, id string) (*Follower, e
 		leaderAddr: leaderAddr,
 		lastSeqNum: 0,
 		id:         id,
+		clusterNodes: clusterNodes,
+		myPriority: myPriority,
 	}
 
 	return follower, nil
