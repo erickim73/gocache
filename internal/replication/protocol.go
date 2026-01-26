@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/erickim73/gocache/pkg/protocol"
 )
@@ -39,6 +40,11 @@ type ReplicateCommand struct {
 type HeartbeatCommand struct {
 	SeqNum int64
 	NodeID string
+}
+
+type RedirectResponse struct {
+	LeaderHost string
+	LeaderPort string
 }
 
 func EncodeSyncRequest(req *SyncRequest) ([]byte, error) {
@@ -299,4 +305,9 @@ func ParseInt64(v interface{}) (int64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// function to detect if a response is a redirect
+func IsRedirect(response string) bool {
+	return strings.HasPrefix(response, "-MOVED")
 }
