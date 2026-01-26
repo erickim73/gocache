@@ -60,6 +60,17 @@ func (ns *NodeState) SetLeaderAddr(addr string) {
 	ns.leaderAddr = addr
 }
 
+// returns true if the operation must be handled by the leader
+func requiresLeader(operation string) bool {
+	switch operation {
+	case "SET", "DEL":
+		return true
+	case "GET":
+		return false
+	default:
+		return false
+	}
+}
 
 const (
 	// redis-style redirect error
