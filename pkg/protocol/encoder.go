@@ -66,7 +66,7 @@ func EncodeRedirect(host string, port int) string {
 
 // function to detect if a response is a redirect
 func IsRedirect(response string) bool {
-	return strings.HasPrefix(response, "-MOVED")
+	return strings.HasPrefix(response, "MOVED") || strings.HasPrefix(response, "-MOVED")
 }
 
 // parses a redirect response into host and port components. Format: "-MOVED host:port\r\n". Returns error if format is invalid
@@ -78,9 +78,10 @@ func ParseRedirect(response string) (*RedirectResponse, error) {
 
 	// remove "-MOVED "
 	withoutPrefix := strings.TrimPrefix(response, "-MOVED ")
+	withoutPrefix2 := strings.TrimPrefix(withoutPrefix, "MOVED ")
 
 	// remove "\r\n"
-	withoutSuffix := strings.TrimSuffix(withoutPrefix, "\r\n")
+	withoutSuffix := strings.TrimSuffix(withoutPrefix2, "\r\n")
 
 	// split on ":" to separate host and port
 	parts := strings.Split(withoutSuffix, ":")
