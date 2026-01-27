@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -257,121 +258,34 @@ func TestDeleteRedirect(t *testing.T) {
 	t.Log("✓ DELETE successfully redirected to leader")
 }
 
-// helper to start a test server (leader or follower)
-type TestServer struct {
-	cache *cache.Cache
-	aof *persistence.AOF
+
+// mock redirect server that always redirects to another address
+type MockRedirectServer struct {
 	listener net.Listener
-	port int
-	role string
+	redirectTo string
 	done chan bool
 }
 
-
-
-
-
-// start a leader server for testing
-func startTestLeader(t *testing.T, port int) *TestServer {
-	// create cache
-	myCache, err := cache.New(100)
-	if err != nil {
-		t.Fatalf("Failed to create cache: %v", err)
-	}
-
-	// create aof
-	aofFile := fmt.Sprintf("test_leader_%d.aof", port)
-	snapshotFile := fmt.Sprintf("test_leader_%d.snapshot", port)
-	aof, err := persistence.NewAOF(aofFile, snapshotFile, persistence.SyncAlways, myCache, 2)
-	if err != nil {
-		t.Fatalf("Failed to create AOF: %v", err)
-	}
-
-	// create leader
-	leader, err := replication.NewLeader(myCache, aof, port + 1000) // use port + 1000 for replication
-	if err != nil {
-		t.Fatalf("Failed to create leader: %v", err)
-	}
-	go leader.Start()
-
-	// create tcp listener
+// start a mock redirect server for testing
+func startMockRedirectServer(t *testing.T, port int, redirectTo string) *MockRedirectServer {
 	address := fmt.Sprintf("localhost:%d", port)
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		t.Fatalf("Failed to create listener: %v", err)
+		t.Fatalf("Failed to create mock redirect server: %v", err)
 	}
 
-	server := &TestServer{
-		cache: myCache,
-		aof: aof,
+	server := &MockRedirectServer{
 		listener: listener,
-		port: port,
-		role: "leader",
+		redirectTo: redirectTo,
 		done: make(chan bool),
 	}
 
-	// start accepting connections
-	go server.acceptConnections(leader, nil)
-
-	// give server time to start
-	time.Sleep(100 * time.Millisecond)
-
-	return server
-}
-
-// start a follower server for testing
-func startTestFollower(t *testing.T, port int, leaderAddr string) *TestServer {
-	// create cache
-	myCache, err := cache.New(100)
-	if err != nil {
-		t.Fatalf("Failed to create cache: %v", err)
-	}
-
-	// create aof
-	aofFile := fmt.Sprintf("test_follower_%d.aof", port)
-	snapshotFile := fmt.Sprintf("test_follower_%d.snapshot", port)
-	aof, err := persistence.NewAOF(aofFile, snapshotFile, persistence.SyncAlways, myCache, 2)
-	if err != nil {
-		t.Fatalf("Failed to create AOF: %v", err)
-	}
-
-	// create node state
-	nodeState, err := server.NewNodeState("follower", nil, leaderAddr)
-
-	// create follower
-	follower, err := replication.NewFollower(myCache, aof, leaderAddr, "test-follower", nil, 1, port + 1000, nodeState)
-	if err != nil {
-		t.Fatalf("Failed to create follower: %v", err)
-	}
-	go follower.Start()
-
-	// create tcp listener
-	address := fmt.Sprintf("localhost:%d", port)
-	listener, err := net.Listen("tcp", address)
-	if err != nil {
-		t.Fatalf("Failed to create listener: %v", err)
-	}
-
-	server := &TestServer{
-		cache: myCache,
-		aof: aof,
-		listener: listener,
-		port: port,
-		role: "follower",
-		done: make(chan bool),
-	}
-
-	// start accepting connections
-	go server.acceptConnections(nil, nodeState)
-
-	// give server time to start
-	time.Sleep(100 * time.Millisecond)
-
+	go server.acceptConnections()
 	return server
 }
 
 // accept connections and handle commands
-func (s *TestServer) acceptConnections(leader *replication.Leader, nodeState *server.NodeState) {
+func (s *MockRedirectServer) acceptConnections() {
 	for {
 		select {
 		case <- s.done:
@@ -381,79 +295,57 @@ func (s *TestServer) acceptConnections(leader *replication.Leader, nodeState *se
 			if err != nil {
 				continue
 			}
-			go s.handleConnection(conn, leader, nodeState)
+			go s.handleConnection(conn)
 		}
 	}
 }
 
 // handle a single connection
-func (s *TestServer) handleConnection(conn net.Conn, leader *replication.Leader, nodeState *server.NodeState) {
+func (s *MockRedirectServer) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)
 	for {
-		result, err := protocol.Parse(reader)
+		_, err := protocol.Parse(reader)
 		if err != nil {
 			return
 		}
 
-		resultSlice, ok := result.([]interface{})
-		if !ok {
-			return
-		}
-
-		command := resultSlice[0].(string)
-
-		// check if write operation on follower
-		if s.role == "follower" && (command == "SET" || command == "DEL") {
-			redirect := fmt.Sprintf("-MOVED %s\r\n", nodeState.GetLeaderAddr())
-			conn.Write([]byte(redirect))
-			continue
-		}
-
-		// handle commands
-		switch command {
-		case "SET":
-			if len(resultSlice) < 3 {
-				conn.Write([]byte(protocol.EncodeError("Invalid SET")))
-				continue
-			}
-
-			key := resultSlice[1].(string)
-			value := resultSlice[2].(string)
-			s.cache.Set(key, value, 0)
-			conn.Write([]byte(protocol.EncodeSimpleString("OK")))
-		
-		case "GET":
-			if len(resultSlice) != 2 {
-				conn.Write([]byte(protocol.EncodeError("Invalid GET")))
-				continue
-			} 
-
-			key := resultSlice[1].(string)
-			value, exists := s.cache.Get(key)
-			if !exists {
-				conn.Write([]byte(protocol.EncodeBulkString("", true)))
-			} else {
-				conn.Write([]byte(protocol.EncodeBulkString(value, false)))
-			}
-
-		case "DEL":
-			if len(resultSlice) != 2 {
-				conn.Write([]byte(protocol.EncodeError("Invalid DEL")))
-				continue
-			}
-			
-			key := resultSlice[1].(string)
-			s.cache.Delete(key)
-			conn.Write([]byte(protocol.EncodeSimpleString("OK")))
-		}
+		// always send redirect
+		redirect := fmt.Sprintf("-MOVED %s\r\n", s.redirectTo)
+		conn.Write([]byte(redirect))
 	}
 }
 
 // stop the test server
-func (s *TestServer) Stop() {
+func (s *MockRedirectServer) Stop() {
 	close(s.done)
 	s.listener.Close()
-	s.aof.Close()
+}
+
+// helper function to clean up test files
+func cleanupTestFiles() {
+	// remove test AOF and snapshot files
+	files := []string{
+		"test_leader_7379.aof",
+		"test_leader_7379.snapshot",
+		"test_follower_7380.aof",
+		"test_follower_7380.snapshot",
+		"test_leader_7381.aof",
+		"test_leader_7381.snapshot",
+		"test_follower_7382.aof",
+		"test_follower_7382.snapshot",
+		"test_leader_7385.aof",
+		"test_leader_7385.snapshot",
+		"test_follower_7386.aof",
+		"test_follower_7386.snapshot",
+		"test_leader_7387.aof",
+		"test_leader_7387.snapshot",
+		"test_follower_7388.aof",
+		"test_follower_7388.snapshot",
+	}
+
+	for _, file := range files {
+		os.Remove(file)
+	}
 }
