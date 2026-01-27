@@ -232,7 +232,7 @@ func TestDeleteRedirect(t *testing.T) {
 	leader.cache.Set("deleteKey", "deleteValue", 0)
 
 	// 4. connect to follower
-	conn, err := client.NewClient("localhost:7386")
+	conn, err := client.NewClient("localhost:7388")
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
 	}

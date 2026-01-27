@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -96,14 +98,32 @@ func startTestFollower(t *testing.T, port int, leaderAddr string) *TestServer {
 		t.Fatalf("Failed to create AOF: %v", err)
 	}
 
+	// parse leaderAddr to get leader's client port, then compute replication port
+	parts := strings.Split(leaderAddr, ":")
+	if len(parts) != 2 {
+		t.Fatalf("Invalid leader address format: %s", leaderAddr)
+	}
+	leaderClientPort, err := strconv.Atoi(parts[1])
+	if err != nil {
+		t.Fatalf("Invalid port in leader address: %v", err)
+	}
+
+	// compute replication port (client port + 1000)
+	leaderReplPort := leaderClientPort + 1000
+	leaderReplAddr := fmt.Sprintf("%s:%d", parts[0], leaderReplPort)
+
+
 	// create node state for follower
 	nodeState, err := server.NewNodeState("follower", nil, leaderAddr)
+	if err != nil {
+		t.Fatalf("Failed to create node state: %v", err)
+	}
 
 	// create follower
 	follower, err := replication.NewFollower(
 		myCache,
 		aof,
-		leaderAddr,
+		leaderReplAddr,
 		"test-follower",
 		nil,              // clusterNodes
 		1,                // priority
