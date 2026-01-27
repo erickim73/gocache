@@ -9,10 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erickim73/gocache/internal/cache"
-	"github.com/erickim73/gocache/internal/persistence"
-	"github.com/erickim73/gocache/internal/replication"
-	"github.com/erickim73/gocache/internal/server"
 	"github.com/erickim73/gocache/pkg/client"
 	"github.com/erickim73/gocache/pkg/protocol"
 )
