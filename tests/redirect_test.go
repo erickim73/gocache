@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,8 +12,8 @@ import (
 	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/internal/replication"
 	"github.com/erickim73/gocache/internal/server"
-	"github.com/erickim73/gocache/pkg/protocol"
 	"github.com/erickim73/gocache/pkg/client"
+	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 // TestRedirect verifies that clients automatically follow redirects from follower to leader
@@ -73,7 +74,7 @@ func TestRedirect(t *testing.T) {
 		t.Errorf("Expected testKey2=testValue2, got testKey2=%s", value2)
 	}
 
-	t.Log("Client successfully followed redirect from follower to leader")
+	t.Log("✓ Client successfully followed redirect from follower to leader")
 }
 
 func TestFollowerReads(t *testing.T) {
@@ -121,8 +122,50 @@ func TestFollowerReads(t *testing.T) {
 		t.Errorf("Expected value, got %s", value)
 	}
 
-	t.Log("Follower successfully served read request")
+	t.Log("✓ Follower successfully served read request")
+}
 
+// TestRedirectLoop verifies that clients detect and fail on redirect loops
+func TestRedirectLoop(t *testing.T) {
+	// clean up any existing test files
+	defer cleanupTestFiles()
+
+	// 1. start two follower servers that redirect to each other, creating an infinite lop
+	t.Log("Starting server1 that redirects to server2...")
+	server1 := startMockRedirectServer(t, 7383, "localhost:7384")
+	defer server1.Stop()
+
+	t.Log("Starting server2 that redirects to server1...")
+	server2 := startMockRedirectServer(t, 7384, "localhost:7383")
+	defer server2.Stop()
+
+	// give server time to start
+	time.Sleep(100 * time.Millisecond)
+
+	// 2. connect client to server1
+	t.Log("Connecting client to server1...")
+	conn, err := client.NewClient("localhost:7383")
+	if err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer conn.Close()
+
+	// 3. try to SET - should fail after max redirects (5) attempts
+	t.Log("Attempting SET (should fail due to redirect loop)...")
+	err = conn.Set("key", "value")
+
+	// 4. verify it failed with correct order
+	if err == nil {
+		t.Fatal("Expected error due to redirect lop, but SET succeeded")
+	}
+
+	// 5. check error message mentions too many redirects
+	if !strings.Contains(err.Error(), "too many redirects") {
+		t.Errorf("Expected 'too many redirects' error, got: %v", err)
+	}
+
+	t.Log("✓ Client properly detected and failed on redirect loop")
+	
 }
 
 // helper to start a test server (leader or follower)
