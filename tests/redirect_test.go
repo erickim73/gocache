@@ -9,10 +9,72 @@ import (
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/persistence"
-	"github.com/erickim73/gocache/pkg/protocol"
 	"github.com/erickim73/gocache/internal/replication"
 	"github.com/erickim73/gocache/internal/server"
+	"github.com/erickim73/gocache/pkg/protocol"
+	"github.com/erickim73/gocache/pkg/client"
 )
+
+// TestRedirect verifies that clients automatically follow redirects from follower to leader
+func TestRedirect(t *testing.T) {
+	// clean up any existing test files
+	defer cleanupTestFiles()
+
+	// start leader on port 7379
+	t.Log("Starting leader on port 7379...")
+	leader := startTestLeader(t, 7379)
+	defer leader.Stop()
+
+	// start a follower on port 7380 that redirects to leader
+	t.Log("Starting follower on port 73800...")
+	follower := startTestFollower(t, 7380, "localhost:7379")
+	defer follower.Stop()
+
+	// give servers time to start
+	time.Sleep(200 * time.Millisecond)
+
+	// connect client to follower (not leader)
+	t.Log("Connecting client to follower at localhost:7370...")
+	conn, err := client.NewClient("localhost:7380")
+	if err != nil {
+		t.Fatalf("Failed to connect to follower: %v", err)
+	}
+	defer conn.Close()
+
+	// try to set a key (should trigger redirect to leader)
+	t.Log("Attempting SET through follower (should redirect)...")
+	err = conn.Set("testkey", "testvalue")
+	if err != nil {
+		t.Fatalf("SET failed after redirect: %v", err)
+	}
+
+	// verify set succeeded on leader
+	t.Log("Verifying key was set on leader...")
+	value, exists := leader.cache.Get("testkey")
+	if !exists {
+		t.Fatal("Key 'testKey' not found on leader after SET")
+	}
+	if value != "testvalue" {
+		t.Errorf("Expected testKey=testValue, got testKey=%s", value)
+	}
+
+	// verify client can now directly use leader connection
+	t.Log("Verifying client use leader for subsequent requests...") 
+	err = conn.Set("testKey2", "testValue2")
+	if err != nil {
+		t.Fatalf("Second SET failed: %v", err)
+	}
+
+	value2, exists := leader.cache.Get("testKey2")
+	if !exists {
+		t.Fatalf("Key 'testKey2' not found on leader")
+	}
+	if value2 != "testValue2" {
+		t.Errorf("Expected testKey2=testValue2, got testKey2=%s", value2)
+	}
+
+	t.Log("Client successfully followed redirect from follower to leader")
+}
 
 // helper to start a test server (leader or follower)
 type TestServer struct {
@@ -23,6 +85,10 @@ type TestServer struct {
 	role string
 	done chan bool
 }
+
+
+
+
 
 // start a leader server for testing
 func startTestLeader(t *testing.T, port int) *TestServer {
