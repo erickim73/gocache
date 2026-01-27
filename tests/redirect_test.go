@@ -20,20 +20,20 @@ func TestRedirect(t *testing.T) {
 	// clean up any existing test files
 	defer cleanupTestFiles()
 
-	// start leader on port 7379
+	// 1. start leader on port 7379
 	t.Log("Starting leader on port 7379...")
 	leader := startTestLeader(t, 7379)
 	defer leader.Stop()
 
-	// start a follower on port 7380 that redirects to leader
-	t.Log("Starting follower on port 73800...")
+	// 2. start a follower on port 7380 that redirects to leader
+	t.Log("Starting follower on port 7380...")
 	follower := startTestFollower(t, 7380, "localhost:7379")
 	defer follower.Stop()
 
 	// give servers time to start
 	time.Sleep(200 * time.Millisecond)
 
-	// connect client to follower (not leader)
+	// 3. connect client to follower (not leader)
 	t.Log("Connecting client to follower at localhost:7370...")
 	conn, err := client.NewClient("localhost:7380")
 	if err != nil {
@@ -41,14 +41,14 @@ func TestRedirect(t *testing.T) {
 	}
 	defer conn.Close()
 
-	// try to set a key (should trigger redirect to leader)
+	// 4. try to set a key (should trigger redirect to leader)
 	t.Log("Attempting SET through follower (should redirect)...")
 	err = conn.Set("testkey", "testvalue")
 	if err != nil {
 		t.Fatalf("SET failed after redirect: %v", err)
 	}
 
-	// verify set succeeded on leader
+	// 5. verify set succeeded on leader
 	t.Log("Verifying key was set on leader...")
 	value, exists := leader.cache.Get("testkey")
 	if !exists {
@@ -58,7 +58,7 @@ func TestRedirect(t *testing.T) {
 		t.Errorf("Expected testKey=testValue, got testKey=%s", value)
 	}
 
-	// verify client can now directly use leader connection
+	// 6. verify client can now directly use leader connection
 	t.Log("Verifying client use leader for subsequent requests...") 
 	err = conn.Set("testKey2", "testValue2")
 	if err != nil {
@@ -74,6 +74,55 @@ func TestRedirect(t *testing.T) {
 	}
 
 	t.Log("Client successfully followed redirect from follower to leader")
+}
+
+func TestFollowerReads(t *testing.T) {
+	// clean up any existing test files
+	defer cleanupTestFiles()
+
+	// 1. start leader on port 7381
+	t.Log("Starting leader on port 7381...")
+	leader := startTestLeader(t, 7381)
+	defer leader.Stop()
+
+	// 2. start a follower on port 7382 that redirects to leader
+	t.Log("Starting follower on port 7382...")
+	follower := startTestFollower(t, 7382, "localhost:7381")
+	defer follower.Stop()
+
+	// give servers time to start
+	time.Sleep(200 * time.Millisecond)
+
+	// 3. SET a key through the leader
+	t.Log("Setting key on leader...")
+	leader.cache.Set("readKey", "readValue", 0)
+
+	// 4. manually replicate for test
+	follower.cache.Set("readKey", "readValue", 0)
+	time.Sleep(100 * time.Millisecond)
+
+	// 5. connect client to FOLLOWER
+	t.Log("Connecting client to follower...")
+	conn, err := client.NewClient("localhost:7382")
+	if err != nil {
+		t.Fatalf("Failed to connect to follower: %v", err)
+	}
+	defer conn.Close()
+
+	// 6. GET key from follower
+	t.Log("Attempting GET from follower...")
+	value, err := conn.Get("readKey")
+	if err != nil {
+		t.Fatalf("GET from followerfailed: %v", err)
+	}
+
+	// 7. verify there's the correct value
+	if value != "readValue" {
+		t.Errorf("Expected value, got %s", value)
+	}
+
+	t.Log("Follower successfully served read request")
+
 }
 
 // helper to start a test server (leader or follower)
