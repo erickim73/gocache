@@ -165,7 +165,96 @@ func TestRedirectLoop(t *testing.T) {
 	}
 
 	t.Log("✓ Client properly detected and failed on redirect loop")
-	
+}
+
+// TestMultipleRedirects verifies client can handle multiple consecutive redirects
+func TestMultipleRedirects(t *testing.T) {
+	// clean up any existing test files
+	defer cleanupTestFiles()
+
+	// 1. start leader
+	t.Log("Starting leader on port 7385...")
+	leader := startTestLeader(t, 7385)
+	defer leader.Stop()
+
+	// 2. start follower
+	t.Log("Starting follower on port 7386")
+	follower := startTestFollower(t, 7386, "localhost:7385")
+	defer follower.Stop()
+
+	// give time for servers to start
+	time.Sleep(200 * time.Millisecond)
+
+	// 3. connect to follower
+	conn, err := client.NewClient("localhost:7386")
+	if err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer conn.Close()
+
+	// 4. do multiple write operations (each should redirect)
+	t.Log("Performing multiple SET operations through follower...")
+	for i := 0; i < 5; i++ {
+		key := fmt.Sprintf("key%d", i)
+		value := fmt.Sprintf("value%d", i)
+
+		err = conn.Set(key, value)
+		if err != nil {
+			t.Fatalf("Set %s failed: %v", key, err)
+		}
+
+		// verify on leader
+		leaderValue, exists := leader.cache.Get(key)
+		if !exists || leaderValue != value {
+			t.Errorf("Key %s not properly set on leader", key)
+		}
+	}
+
+	t.Log("✓ Client successfully handled multiple redirects")
+}
+
+// TestDeleteRedirect verifies DELETE operations also redirect properly
+func TestDeleteRedirect(t *testing.T) {
+	// clean up any existing test files
+	defer cleanupTestFiles()
+
+	// 1. start leader
+	t.Log("Starting leader on port 7387...")
+	leader := startTestLeader(t, 7387)
+	defer leader.Stop()
+
+	// 2. start follower
+	t.Log("Starting follower on port 7388")
+	follower := startTestFollower(t, 7388, "localhost:7387")
+	defer follower.Stop()
+
+	// give time for servers to start
+	time.Sleep(200 * time.Millisecond)
+
+	// 3. set a key on leader first
+	leader.cache.Set("deleteKey", "deleteValue", 0)
+
+	// 4. connect to follower
+	conn, err := client.NewClient("localhost:7386")
+	if err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer conn.Close()
+
+	// 5. try to delete through follower (should redirect)
+	t.Log("Attempting DELETE through follower...")
+	err = conn.Delete("deleteKey")
+	if err != nil {
+		t.Fatalf("DELETE failed: %v", err)
+	}
+
+	// 6. verify key is deleted on leader
+	_, exists := leader.cache.Get("deleteKey")
+	if exists {
+		t.Error("Key still exists on leader after DELETE")
+	}
+
+	t.Log("✓ DELETE successfully redirected to leader")
 }
 
 // helper to start a test server (leader or follower)
