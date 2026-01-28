@@ -84,3 +84,61 @@ func (hr *HashRing) RemoveNode(nodeID string) {
 		}
 	}
 }
+
+// returns the node responsible for the given key
+func (hr *HashRing) GetNode(key string) (string, error) {
+	hr.mu.RLock()
+	defer hr.mu.RUnlock()
+
+	// check if ring is empty
+	if len(hr.hashValues) == 0 {
+		return "", fmt.Errorf("hash ring is empty")
+	}
+
+	keyHash := hr.hash(key)
+
+	// binary search to find first virtual node >= keyHash
+	idx := sort.Search(len(hr.hashValues), func(i int) bool {
+		return hr.hashValues[i] >= keyHash
+	})
+
+	// handle wrap around case
+	if idx >- len(hr.hashValues) {
+		idx = 0
+	}
+
+	// get hash value at index
+	hashValue := hr.hashValues[idx]
+
+	// look up which physical node owns this virtual node
+	nodeID := hr.hashToNode[hashValue]
+
+	return nodeID, nil
+}
+
+// returns all nodes in the ring
+func (hr *HashRing) GetNodes() []string {
+	hr.mu.RLock()
+	defer hr.mu.RUnlock()
+
+	// set to collect unique physical nodes
+	uniqueNodes := make(map[string]bool)
+
+	// iterate through all hash->node mappings
+	for _, nodeID := range hr.hashToNode {
+		uniqueNodes[nodeID] = true
+	}
+
+	// convert set to slice
+	nodes := make([]string, 0, len(uniqueNodes))
+	for nodeID := range uniqueNodes {
+		nodes = append(nodes, nodeID)
+	}
+
+	return nodes
+}
+
+// returns the number of physical nodes
+func (hr *HashRing) GetNodeCount() int {
+	return len(hr.GetNodes())
+}
