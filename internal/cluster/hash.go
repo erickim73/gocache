@@ -61,3 +61,26 @@ func (hr *HashRing) AddNode(nodeID string) {
 		return hr.hashValues[i] < hr.hashValues[j]
 	})
 }
+
+// removes a physical node and all its virtual nodes from the ring
+func (hr *HashRing) RemoveNode(nodeID string) {
+	hr.mu.Lock()
+	defer hr.mu.Unlock()
+
+	for i := 0; i < hr.virtualNodes; i++ {
+		// recreate unique virtual node key and hash it
+		virtualKey := fmt.Sprintf("%s-%d", nodeID, i)
+		hashValue := hr.hash(virtualKey)
+
+		// remove from hash-to-node mapping
+		delete(hr.hashToNode, hashValue)
+
+		// remove hash value from sorted slice
+		for idx, val := range hr.hashValues {
+			if val == hashValue {
+				hr.hashValues = append(hr.hashValues[:idx], hr.hashValues[idx + 1:]...)
+				break
+			}
+		}
+	}
+}
