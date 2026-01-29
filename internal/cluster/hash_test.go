@@ -104,3 +104,43 @@ func TestHashRing_Distribution(t *testing.T) {
 		}
 	}
 }
+
+func TestHashRing_ConsistentHashing(t *testing.T) {
+	// test that adding a node only moves a small portion of keys
+	ring := NewHashRing(150)
+	ring.AddNode("node1")
+	ring.AddNode("node2")
+	ring.AddNode("node3")
+
+	// record where keys map before adding node4
+	keyMapping := make(map[string]string)
+	totalKeys := 10000
+
+	for i := 0; i < totalKeys; i++ {
+		key := fmt.Sprintf("key%d", i)
+		node, _ := ring.GetNode(key)
+		keyMapping[key] = node
+	}
+
+	// add node4
+	ring.AddNode("node4")
+
+	// count how many keys moved
+	moved := 0
+	for i := 0; i < totalKeys; i++ {
+		key := fmt.Sprintf("key%d", i)
+		newNode, _ := ring.GetNode(key)
+		if keyMapping[key] != newNode {
+			moved++
+		}
+	}
+
+	movedPercentage := float64(moved) / float64(totalKeys) * 100
+	t.Logf("keys moved: %d/%d (%.2f%%)", moved, totalKeys, movedPercentage)
+
+	// should move approximately 25% of keys
+	// allow 15-35% range due to randomness
+	if movedPercentage < 15 || movedPercentage > 35 {
+		t.Errorf("Expected ~25%% of keys to move, but %.2%% moved", movedPercentage)
+	}
+}
