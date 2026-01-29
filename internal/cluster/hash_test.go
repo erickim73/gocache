@@ -64,3 +64,43 @@ func TestHashRing_RemoveNode(t *testing.T) {
 		}
 	}
 }
+
+func TestHashRing_Distribution(t *testing.T) {
+	ring := NewHashRing(150) // more virtual nodes for better distribution
+	ring.AddNode("node1")
+	ring.AddNode("node2")
+	ring.AddNode("node3")
+
+	// count how many keys go to each node
+	distribution := make(map[string]int)
+	totalKeys := 10000
+
+	for i := 0; i < totalKeys; i++ {
+		key := fmt.Sprintf("key%d", i)
+		node, err := ring.GetNode(key)
+		if err != nil {
+			t.Fatalf("Error getting node: %v", err)
+		}
+		distribution[node]++
+	}
+
+	// print distribution
+	for node, count := range distribution {
+		percentage := float64(count) / float64(totalKeys) * 100
+		t.Logf("%s: %d keys (%.2f%%)", node, count, percentage)
+	}
+
+	// each node should get roughly 33%
+	expectedPerNode := totalKeys / 3
+	tolerance := float64(expectedPerNode) * 0.15 // 15% tolerance
+
+	for node, count := range distribution {
+		diff := float64(count - expectedPerNode)
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > tolerance {
+			t.Errorf("Node %s has poor distribution: %d keys (expected ~%d)", node, count, expectedPerNode)
+		}
+	}
+}
