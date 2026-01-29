@@ -103,7 +103,7 @@ func (hr *HashRing) GetNode(key string) (string, error) {
 	})
 
 	// handle wrap around case
-	if idx >- len(hr.hashValues) {
+	if idx >= len(hr.hashValues) {
 		idx = 0
 	}
 
