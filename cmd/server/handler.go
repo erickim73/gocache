@@ -52,21 +52,6 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 		}
 		command := resultSlice[0]
 
-		// get current role and leader
-		role := nodeState.GetRole()
-		leader := nodeState.GetLeader()
-		leaderAddr := nodeState.GetLeaderAddr()
-
-		// check if command requires leader
-		if requiresLeader(command.(string)) {
-			// if node isn't leader, redirect client
-			if role != "leader" {
-				redirect := fmt.Sprintf(ErrMovedFormat, leaderAddr)
-				conn.Write([]byte(redirect))
-				continue
-			}
-		}
-
 		// extract key from command
 		var key string
 		if len(resultSlice) >= 2 {
@@ -88,14 +73,31 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 			fmt.Printf("[ROUTING] key '%s' belongs to this node, handling locally\n", key)
 		}
 
+		// get current role and leader
+		// role := nodeState.GetRole()
+		// leader := nodeState.GetLeader()
+		// leaderAddr := nodeState.GetLeaderAddr()
+
+		// // check if command requires leader
+		// if requiresLeader(command.(string)) {
+		// 	// if node isn't leader, redirect client
+		// 	if role != "leader" {
+		// 		redirect := fmt.Sprintf(ErrMovedFormat, leaderAddr)
+		// 		conn.Write([]byte(redirect))
+		// 		continue
+		// 	}
+		// }
+
 		// handle commands
 		switch command {
 		case "SET":
-			handleSet(conn, resultSlice, cache, aof, leader)
+			// handleSet(conn, resultSlice, cache, aof, leader)
+			handleSet(conn, resultSlice, cache, aof, nil)
 		case "GET":
 			handleGet(conn, resultSlice, cache)
 		case "DEL":
-			handleDelete(conn, resultSlice, cache, aof, leader)
+			// handleDelete(conn, resultSlice, cache, aof, leader)
+			handleDelete(conn, resultSlice, cache, aof, nil)
 		default:
 			conn.Write([]byte(protocol.EncodeError("Unknown command " + command.(string))))
 		}
@@ -128,13 +130,21 @@ func handleSet(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, aof
 
 	ttlSeconds := int64(ttl.Seconds()) // 0 if no TTL
 
-	// send to followers
+	// only replicate if we have a leader (non-cluster mode)
 	if leader != nil {
 		err := leader.Replicate(replication.OpSet, key, value, ttlSeconds)
 		if err != nil {
-			fmt.Printf("Error replicating SET command from leader to follower: %v\n", err)
+			fmt.Printf("Error replicating SET command: %v\n", err)
 		}
 	}
+
+	// send to followers
+	// if leader != nil {
+	// 	err := leader.Replicate(replication.OpSet, key, value, ttlSeconds)
+	// 	if err != nil {
+	// 		fmt.Printf("Error replicating SET command from leader to follower: %v\n", err)
+	// 	}
+	// }
 
 	// write to aof
 	ttlSecondsStr := strconv.FormatInt(ttlSeconds, 10) 
