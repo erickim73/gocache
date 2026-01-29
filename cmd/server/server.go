@@ -9,6 +9,7 @@ import (
 	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/internal/replication"
 	"github.com/erickim73/gocache/internal/server"
+	"github.com/erickim73/gocache/internal/cluster"
 	"github.com/google/uuid"
 )
 
@@ -157,6 +158,19 @@ func startClusterMode(cfg *config.Config) {
 		fmt.Printf("error recovering from aof: %v\n", err)
 		return
 	}
+
+	// create hash ring for key distribution
+	fmt.Println("\n=== Initializing Hash Ring for Key Distribution === ")
+	hashRing := cluster.NewHashRing(150)
+
+	// add all cluster nodes to hash ring
+	for _, node := range cfg.Nodes {
+		hashRing.AddNode(node.ID)
+		fmt.Printf("  ✓ Added node to hash ring: %s\n", node.ID)
+	}
+	fmt.Printf("✓ Hash ring initialized with %d nodes\n", len(cfg.Nodes))
+	fmt.Printf("  Each node has 150 virtual nodes for balanced distribution\n")
+	fmt.Println("==========================================")
 
 	// determine initial role based on priority
 	// highest priority node starts as leader
