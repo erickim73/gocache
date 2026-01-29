@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 )
 
@@ -141,6 +142,53 @@ func TestHashRing_ConsistentHashing(t *testing.T) {
 	// should move approximately 25% of keys
 	// allow 15-35% range due to randomness
 	if movedPercentage < 15 || movedPercentage > 35 {
-		t.Errorf("Expected ~25%% of keys to move, but %.2%% moved", movedPercentage)
+		t.Errorf("Expected ~25%% of keys to move, but %.2f%% moved", movedPercentage)
 	}
+}
+
+func TestHashRing_Concurrent(t *testing.T) {
+	// test thread safety
+	ring := NewHashRing(150)
+	ring.AddNode("node1")
+	ring.AddNode("node2")
+
+	var wg sync.WaitGroup
+
+	// spawn 10 goroutines that query keys
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				key := fmt.Sprintf("key-%d-%d", id, j)
+				_, err := ring.GetNode(key)
+				if err != nil {
+					t.Errorf("Error in goroutine %d: %v", id, err)
+				}
+			}
+		}(i)
+	}
+
+	// spawn 5 goroutines that add nodes
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done() 
+			nodeID := fmt.Sprintf("concurrent-node-%d", id)
+			ring.AddNode(nodeID)
+		}(i)
+	}
+
+	// spawn 3 goroutines that removes nodes
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			nodeID := fmt.Sprintf("concurrent-node-%d", id)
+			ring.RemoveNode(nodeID)
+		}(i)
+	}
+
+	wg.Wait()
+	t.Log("Concurrent test completed successfully")
 }
