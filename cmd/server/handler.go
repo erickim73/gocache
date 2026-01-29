@@ -67,6 +67,27 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 			}
 		}
 
+		// extract key from command
+		var key string
+		if len(resultSlice) >= 2 {
+			key = resultSlice[1].(string)
+		}
+
+		// check if we should handle this key or forward it
+		if nodeState.IsClusterMode() && key != "" {
+			shouldForward, targetNodeID, targetAddr := nodeState.ShouldForwardRequest(key)
+			if shouldForward {
+				// key belongs to another node - return MOVED
+				msg := fmt.Sprintf("-MOVED %s %s\r\n", targetNodeID, targetAddr)
+				conn.Write([]byte(msg))
+				fmt.Printf("[ROUTING] key '%s' belongs to %s (%s), returning MOVED\n", key, targetNodeID, targetAddr)
+				continue
+			}
+
+			// key belongs to node, log and continue
+			fmt.Printf("[ROUTING] key '%s' belongs to this node, handling locally\n", key)
+		}
+
 		// handle commands
 		switch command {
 		case "SET":
