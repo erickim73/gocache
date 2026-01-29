@@ -1,0 +1,30 @@
+# node 1 configuration
+node_id: "node1"
+
+# cache settings
+max_cache_size: 1000
+aof_file: "data/node1-cache.aof"
+snapshot_file: "data/node1-cache.rdb"
+sync_policy: "everysecond"
+snapshot_interval_seconds: 300
+growth_factor: 2
+
+# cluster topology
+nodes:
+  - id: "node1"
+    host: "localhost"
+    port: 6379         # redis clients connect here
+    repl_port: 7379    # other nodes connect here for replication
+    priority: 3        # highest priority = becomes leader first
+
+  - id: "node2"
+    host: "localhost"
+    port: 6380
+    repl_port: 7380
+    priority: 2
+
+  - id: "node3"
+    host: "localhost"  
+    port: 6381
+    repl_port: 7381
+    priority: 1

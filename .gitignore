@@ -1,3 +1,4 @@
 cmd/server/cache.rdb
 cmd/server/cache.aof
 internal/persistence/bench_test_*
+data/*

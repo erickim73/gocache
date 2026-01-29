@@ -41,7 +41,7 @@ func (ns *NodeState) ShouldForwardRequest(key string) (bool, string, string) {
 	// ask hash ring which node owns this key
 	responsibleNodeID, err := ns.hashRing.GetNode(key)
 	if err != nil {
-		// hanlde locally if hash ring fails
+		// handle locally if hash ring fails
 		return false, "", ""
 	}
 
