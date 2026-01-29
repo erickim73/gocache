@@ -42,3 +42,25 @@ func TestHashRing_BasicOperations(t *testing.T) {
 		}
 	}
 }
+
+func TestHashRing_RemoveNode(t *testing.T) {
+	ring := NewHashRing(3)
+	ring.AddNode("node1")
+	ring.AddNode("node2")
+	ring.AddNode("node3")
+
+	// remove node2
+	ring.RemoveNode("node2")
+
+	// check that keys no longer map to node2
+	for i := 0; i < 100; i++ {
+		key := fmt.Sprintf("key%d", i)
+		node, err := ring.GetNode(key)
+		if err != nil {
+			t.Errorf("Error getting node for %s: %v", key, err)
+		}
+		if node == "node2" {
+			t.Errorf("Key %s still maps to removed node2", key)
+		}
+	}
+}
