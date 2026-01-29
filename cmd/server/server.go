@@ -176,7 +176,7 @@ func startClusterMode(cfg *config.Config) {
 	// highest priority node starts as leader
 	if cfg.AmIHighestPriority() {
 		fmt.Printf("\n I have highest priority - starting as leader\n\n")
-		startAsLeader(myNode, myCache, aof)
+		startAsLeader(myNode, myCache, aof, cfg, hashRing)
 	} else {
 		fmt.Printf("\n Not highest priority - starting as follower")
 
@@ -185,16 +185,24 @@ func startClusterMode(cfg *config.Config) {
 		leaderAddr := fmt.Sprintf("%s:%d", leaderNode.Host, leaderNode.ReplPort)
 		fmt.Printf("Connecting to leader %s at: %s\n\n", leaderNode.ID, leaderAddr)
 
-		startAsFollower(myNode, myCache, aof, leaderAddr, cfg.Nodes)
+		startAsFollower(myNode, myCache, aof, leaderAddr, cfg.Nodes, cfg, hashRing)
 	}
 }
 
 // helper function to start this node as a leader
-func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persistence.AOF) {
+func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persistence.AOF, cfg *config.Config, hashRing *cluster.HashRing) {
 	// create node state
 	nodeState, err := server.NewNodeState("leader", nil, "")
+	if err != nil {
+		fmt.Printf("error creating node state: %v\n", err)
+		return
+	}	
 
-	
+	// set cluster components in node state for routing
+	nodeState.SetConfig(cfg)
+	nodeState.SetHashRing(hashRing)
+	fmt.Println("✓ Cluster routing enabled (hash ring + config)")
+
 	// create leader
 	leader, err := replication.NewLeader(myCache, aof, myNode.ReplPort) 
 	if err != nil {
@@ -212,9 +220,18 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 }
 
 // helper function to start this node as a follower
-func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persistence.AOF, leaderAddr string, clusterNodes []config.NodeInfo) {
+func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persistence.AOF, leaderAddr string, clusterNodes []config.NodeInfo, cfg *config.Config, hashRing *cluster.HashRing) {
 	// create node state
 	nodeState, err := server.NewNodeState("follower", nil, leaderAddr)
+	if err != nil {
+		fmt.Printf("error creating node state: %v\n", err)
+		return
+	}
+
+	// set cluster components in node state for routing
+	nodeState.SetConfig(cfg)
+	nodeState.SetHashRing(hashRing)
+	fmt.Println("✓ Cluster routing enabled (hash ring + config)")
 
 	var leaderClientAddr string
 	for _, node := range clusterNodes {
