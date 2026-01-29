@@ -69,3 +69,58 @@ func (hr *HashRing) CalculateMigrations(newNodeID string) []MigrationTask {
 		
 	return tasks
 }
+
+// determines where keys should go when a node leaves
+func (hr *HashRing) CalculateMigrationsForRemoval(removeNodeID string) []MigrationTask {
+	hr.mu.RLock()
+	defer hr.mu.Unlock()
+
+	tasks := []MigrationTask{}
+
+	// find all virtual nodes belonging to the node being removed
+	for i := 0; i < hr.virtualNodes; i++ {
+		vnodeName := fmt.Sprintf("%s-%d", removeNodeID, i)
+		vhash := hr.hash(vnodeName)
+
+		// find this virtual node's position in the ring
+		idx := sort.Search(len(hr.hashValues), func(i int) bool {
+			return hr.hashValues[i] >= vhash
+		})
+
+		// find the next node on the ring
+		var nextHash uint32
+		var nextNode string
+
+		// the next node is the one immediately after this one
+		nextIdx := (idx + 1) % len(hr.hashValues)
+		nextHash = hr.hashValues[nextIdx]
+		nextNode = hr.hashToNode[nextHash]
+
+		// create task if next node is different from current node
+		if nextNode != removeNodeID {
+			// previous hash is where the range starts
+			var prevHash uint32
+			if idx == 0 {
+				prevHash = hr.hashValues[len(hr.hashValues) - 1]
+			} else {
+				prevHash = hr.hashValues[idx - 1]
+			}
+
+			task := MigrationTask{
+				FromNode: removeNodeID, 
+				ToNode: nextNode,
+				KeyPattern: "*",
+				StartHash: prevHash,
+				EndHash: vhash,
+			}
+			tasks = append(tasks, task)
+			
+			fmt.Printf("[MIGRATION] Removal tasks: %s [%d->%d] -> %s\n", removeNodeID, prevHash, vhash, nextNode)
+		}
+	}
+
+	fmt.Printf("[MIGRATION] Calculated %d removal tasks for %s\n", len(tasks), removeNodeID)
+
+	return tasks
+} 
+
