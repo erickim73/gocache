@@ -45,6 +45,8 @@ func (ns *NodeState) ShouldForwardRequest(key string) (bool, string, string) {
 		return false, "", ""
 	}
 
+	fmt.Printf("[DEBUG] key '%s' → hash ring says: '%s', my ID: '%s'\n", key, responsibleNodeID, ns.config.NodeID)
+
 	// check if we're the responsible node
 	if responsibleNodeID == ns.config.NodeID {
 		// node owns this key, handle locally
@@ -59,6 +61,8 @@ func (ns *NodeState) ShouldForwardRequest(key string) (bool, string, string) {
 			break
 		}
 	}
+
+	fmt.Printf("[DEBUG] Forwarding key '%s' to nodeID='%s', addr='%s'\n", key, responsibleNodeID, targetAddr)
 
 	if targetAddr == "" {
 		// couldn't find node address, handle locally
