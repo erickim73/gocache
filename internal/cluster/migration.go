@@ -124,3 +124,20 @@ func (hr *HashRing) CalculateMigrationsForRemoval(removeNodeID string) []Migrati
 	return tasks
 } 
 
+// checks if a hash value falls within a range on the ring
+func (hr *HashRing) hashInRange(hash uint32, start uint32, end uint32) bool {
+	// simple case - no wrap around
+	if start < end {
+		return hash >= start && hash < end
+	}
+
+	// wrap around case - range crosses the 0 boundary
+	return hash >= start || hash < end
+}
+
+// helper method to check if a key falls within a hash range
+func (hr *HashRing) KeyInRange(key string, start uint32, end uint32) bool {
+	// hash the key and check if it falls in the range
+	keyHash := hr.hash(key)
+	return hr.hashInRange(keyHash, start, end)
+}
