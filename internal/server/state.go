@@ -69,6 +69,22 @@ func (ns *NodeState) ShouldForwardRequest(key string) (bool, string, string) {
 	return true, responsibleNodeID, targetAddr
 }
 
+// set hash ring for cluster routing
+func (ns *NodeState) SetHashRing(hr *cluster.HashRing) {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	
+	ns.hashRing = hr
+}
+
+// set config for cluster information
+func (ns *NodeState) SetConfig(cfg *config.Config) {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	
+	ns.config = cfg
+}
+
 func (ns *NodeState) GetRole() string {
 	ns.mu.RLock()
 	defer ns.mu.RUnlock()
@@ -110,5 +126,7 @@ func NewNodeState(role string, leader *replication.Leader, leaderAddr string) (*
 		role: role,
 		leader: leader,
 		leaderAddr: leaderAddr,
+		hashRing: nil,
+		config: nil,
 	}, nil
 }
