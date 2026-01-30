@@ -71,3 +71,79 @@ func TransferKeys(targetAddr string, keys []string, values map[string]string) er
 
 	return nil
 }
+
+// attempts transfer with automatic retires on failure
+func TransferKeysWithRetry(targetAddr string, keys []string, values map[string]string, maxRetries int) error {
+	var lastErr error
+
+	// try up to maxRetries times
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		fmt.Printf("[TRANSFER] Attempt %d/%d to transfer %d keys to %s\n", attempt, maxRetries, len(keys), targetAddr)
+
+		// attempt the transfer
+		err := TransferKeys(targetAddr, keys, values)
+
+		if err == nil {
+			fmt.Printf("[TRANSFER] Transfer succeded on attempt %d\n", attempt)
+			return nil
+		}
+
+		// failed - log and potentially retry
+		lastErr = err
+		fmt.Printf("[TRANSFER] Attempt %d failed: %v\n", attempt, err)
+
+		// don't sleep after the last attempt
+		if attempt < maxRetries {
+			// exponential backoff
+			backoff := time.Duration(attempt) * time.Second
+			fmt.Printf("[TRANSFER] Retrying in %v...\n", backoff)
+			time.Sleep(backoff)
+		}
+	}
+
+	return fmt.Errorf("transfer failed after %d attempts: %v", maxRetries, lastErr)
+}
+
+// transfers keys in smaller batches to avoid overwhelming the network
+func TransferKeysBatch(targetAddr string, keys []string, values map[string]string, batchSize int) error {
+	// calculate how many batches we need
+	totalKeys := len(keys)
+	numBatches := (totalKeys + batchSize - 1) / batchSize // ceiling division
+
+	fmt.Printf("[TRANSFER] Splitting %d keys into %d batches of %d\n", totalKeys, numBatches, batchSize)
+
+	// process each batch
+	for i := 0; i < numBatches; i++ {
+		// calculate batch boundaries
+		start := i * batchSize
+		end := start + batchSize
+		if end > totalKeys {
+			end = totalKeys
+		}
+
+		// extract keys for this batch
+		batchKeys := keys[start: end]
+
+		// extract values for this batch
+		batchValues := make(map[string]string)
+		for _, key := range batchKeys {
+			batchValues[key] = values[key]
+		}
+
+		fmt.Printf("[TRANSFER] Batch %d/%d: transferring keys %d-%d\n", i + 1, numBatches, start, end - 1)
+
+		// transfer this batch with retries
+		err := TransferKeysWithRetry(targetAddr, batchKeys, batchValues, 3)
+		if err != nil {
+			// if any batch fails, stop migration
+			return fmt.Errorf("batch %d failed: %v", i + 1, err)
+		}
+
+		if i < numBatches - 1 {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	fmt.Printf("[TRANSFER] All %d batches completed successfully\n", numBatches)
+	return nil
+}
