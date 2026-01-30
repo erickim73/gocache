@@ -50,6 +50,7 @@ func handleClusterAddNode(conn net.Conn, command []interface{}, cache *cache.Cac
 	migrator := nodeState.GetMigrator()
 	if migrator == nil {
 		conn.Write([]byte(protocol.EncodeError("Cluster not initialized")))
+		return
 	}
 
 	// trigger the migration process
@@ -72,8 +73,15 @@ func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.
 
 	nodeID := command[2].(string)
 
+	fmt.Printf("[CLUSTER] Removing node %s\n", nodeID)
+
 	// get migrator and hash ring
 	migrator := nodeState.GetMigrator()
+	if migrator == nil {
+		conn.Write([]byte(protocol.EncodeError("Cluster is not initialized")))
+		return
+	}
+
 	err := migrator.MigrateFromLeavingNode(nodeID)
 	if err != nil {
 		conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("Migration failed: %v", err))))
@@ -87,6 +95,10 @@ func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.
 func handleClusterNodes(conn net.Conn, nodeState *server.NodeState) {
 	// get hash ring to access node information
 	hashRing := nodeState.GetHashRing()
+	if hashRing == nil {
+		conn.Write([]byte(protocol.EncodeError("Cluster is not initialized")))
+		return
+	}
 
 	// get list of all node IDs
 	nodes := hashRing.GetAllNodes()
