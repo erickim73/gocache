@@ -101,3 +101,76 @@ func (m *Migrator) MigrateToNewNode(newNodeID string, newNodeAddr string) error 
 
 	return nil
 }
+
+// handles migration when a node leaves
+func (m *Migrator) MigrateFromLeavingNode(leavingNodeID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	fmt.Printf("[MIGRATION] Handling departure of node %s\n", leavingNodeID)
+
+	// calculate where keys should move
+	tasks := m.hashRing.CalculateMigrationsForRemoval(leavingNodeID)
+
+	if len(tasks) == 0 {
+		fmt.Printf("[MIGRATION] No keys to migrate\n")
+		m.hashRing.RemoveNode(leavingNodeID)
+		return nil
+	}
+
+	fmt.Printf("[MIGRATION] Found %d migration tasks for node removal\n", len(tasks))
+
+	totalKeysMigrated := 0
+
+	// execute each migration task
+	for i, task := range tasks {
+		fmt.Printf("[MIGRATION] Task %d/%d: Migrating to %s\n", i + 1, len(tasks), task.ToNode)
+
+		// get keys in this range
+		keys := m.cache.GetKeysInHashRange(task.StartHash, task.EndHash, m.hashRing.Hash)
+
+		if len(keys) == 0 {
+			continue
+		}
+
+		// get values
+		values := make(map[string]string)
+		for _, key := range keys {
+			value, exists := m.cache.Get(key)
+			if exists {
+				values[key] = value
+			}
+		}
+
+		// get target address
+		targetAddr := m.hashRing.GetNodeAddress(task.ToNode)
+
+		// transfer keys
+		fmt.Printf("[MIGRATION] Task %d: Transferring %d keys to %s\n", i + 1, len(keys), targetAddr)
+		err := TransferKeysBatch(targetAddr, keys, values, 100)
+		if err != nil {
+			return fmt.Errorf("task %d transfer failed: %v", i + 1, err)
+		}
+
+		// verify transfer
+		err = VerifyTransfer(targetAddr, keys)
+		if err != nil {
+			return fmt.Errorf("task %d verification failed: %v", i + 1, err)
+		}
+
+		// delete from local cache
+		for _, key := range keys {
+			m.cache.Delete(key)
+		}
+
+		totalKeysMigrated += len(keys)
+	}
+
+	// remove node from hash ring
+	fmt.Printf("[MIGRATION] Removing %s from hash ring\n", leavingNodeID)
+	m.hashRing.RemoveNode(leavingNodeID)
+
+	fmt.Printf("[MIGRATION] Removal complete: %d total keys migrated away from %s\n", totalKeysMigrated, leavingNodeID)
+
+	return nil
+}
