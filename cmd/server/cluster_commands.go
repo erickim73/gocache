@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"time"
@@ -28,9 +29,43 @@ func handleClusterCommand(conn net.Conn, command []interface{}, cache *cache.Cac
 		handleClusterRemoveNode(conn, command, cache, nodeState)
 	case "NODES":
 		handleClusterNodes(conn, nodeState)
+	case "TOPOLOGY":
+		handleClusterTopology(conn, command, nodeState)
 	default:
 		conn.Write([]byte(protocol.EncodeError("Unknown CLUSTER subcommand")))
 	}
+}
+
+
+func handleClusterTopology(conn net.Conn, command []interface{}, nodeState *server.NodeState) {
+	if len(command) < 5 {
+		conn.Write([]byte(protocol.EncodeError("TOPOLOGY requires operation, nodeID, and address")))
+		return
+	}
+
+	operation := command[2].(string)
+	targetNodeID := command[3].(string)
+	targetNodeAddr := command[4].(string)
+
+	hashRing := nodeState.GetHashRing()
+
+	switch operation {
+	case "ADD":
+		fmt.Printf("[CLUSTER] Received topology update: ADD %s at %s\n", targetNodeID, targetNodeAddr)
+		hashRing.AddNode(targetNodeID)
+		hashRing.SetNodeAddress(targetNodeID, targetNodeAddr)
+		fmt.Printf("[CLUSTER] Updated local hash ring\n")
+	case "REMOVE":
+		fmt.Printf("[CLUSTER] Received topology update: REMOVE %s\n", targetNodeID)
+		hashRing.RemoveNode(targetNodeID)
+		hashRing.SetNodeAddress(targetNodeID, "")
+		fmt.Printf("[CLUSTER] Updated local hash ring\n")
+	default:
+		conn.Write([]byte(protocol.EncodeError("Unknown TOPOLOGY operation")))
+		return
+	}
+
+	conn.Write([]byte(protocol.EncodeSimpleString("OK")))
 }
 
 // adds a new node to the cluster and triggers data migration
@@ -83,6 +118,27 @@ func handleClusterAddNode(conn net.Conn, command []interface{}, cache *cache.Cac
 		return
 	}
 
+	// broadcast to all other nodes in cluster
+	config := nodeState.GetConfig()
+
+	fmt.Printf("[CLUSTER] Broadcasting node addition to other nodes...\n")
+	for _, node := range config.Nodes {
+		if node.ID == config.NodeID {
+			continue
+		}
+
+		// connect to other node and tell it to add node4
+		nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
+		fmt.Printf("[CLUSTER] Notifying %s at %s\n", node.ID, nodeAddr)
+
+		err := notifyNodeAboutTopologyChange(nodeAddr, "ADD", newNodeID, newNodeAddr)
+		if err != nil {
+			fmt.Printf("[CLUSTER] Warning: Failed to notify %s: %v\n", node.ID, err)
+			// continue anyway, not fatal
+		}
+	}
+
+	fmt.Printf("[CLUSTER] Topology broadcast complete\n")
 	conn.Write([]byte(protocol.EncodeSimpleString("OK")))
 }
 
@@ -133,4 +189,25 @@ func handleClusterNodes(conn net.Conn, nodeState *server.NodeState) {
 	}
 
 	conn.Write([]byte(protocol.EncodeBulkString(response, false)))
+}
+
+// helper function to notify other nodes
+func notifyNodeAboutTopologyChange(nodeAddr string, operation string, targetNodeID string, targetNodeAddr string) error {
+	conn, err := net.DialTimeout("tcp", nodeAddr, 2 * time.Second)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	// send cluster topology update command
+	cmd := protocol.EncodeArray([]interface{}{"CLUSTER", "TOPOLOGY", operation, targetNodeID, targetNodeAddr})
+	_, err = conn.Write([]byte(cmd))
+	if err != nil {
+		return err
+	}
+
+	// read response
+	reader := bufio.NewReader(conn)
+	_, err = protocol.Parse(reader)
+	return err
 }

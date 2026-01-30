@@ -28,9 +28,3 @@ nodes:
     port: 8381
     repl_port: 8481
     priority: 1
-  
-  - id: "node4"
-    host: "localhost"  
-    port: 8382
-    repl_port: 8482
-    priority: 0

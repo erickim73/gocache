@@ -146,6 +146,13 @@ func (ns *NodeState) GetHashRing() *cluster.HashRing {
 	return ns.hashRing
 }
 
+// returns the config for cluster operations
+func (ns *NodeState) GetConfig() *config.Config {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+	return ns.config
+}
+
 // returns the migrator for data migration operations
 func (ns *NodeState) GetMigrator() *cluster.Migrator {
 	ns.mu.RLock()
