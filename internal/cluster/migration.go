@@ -19,7 +19,7 @@ func (hr *HashRing) CalculateMigrations(newNodeID string) []MigrationTask {
 	hr.mu.RLock()
 	defer hr.mu.RUnlock()
 
-	tasks := []MigrationTask{}
+	tasks := make([]MigrationTask, 0, hr.virtualNodes)
 
 	// for each virtual node we're adding, we need to calculate migrations
 	for i := 0; i < hr.virtualNodes; i++ {
