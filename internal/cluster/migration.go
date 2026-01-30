@@ -62,7 +62,7 @@ func (hr *HashRing) CalculateMigrations(newNodeID string) []MigrationTask {
 			}
 			tasks = append(tasks, task)
 
-			fmt.Printf("[MIGRATION] Task created: %s [%d->%d] -> %s\n", prevNode, prevHash, vhash, newNodeID)
+			// fmt.Printf("[MIGRATION] Task created: %s [%d->%d] -> %s\n", prevNode, prevHash, vhash, newNodeID)
 		}
 	}
 	fmt.Printf("[MIGRATION] Calculated %d migration tasks for %s\n", len(tasks), newNodeID)
@@ -120,7 +120,7 @@ func (hr *HashRing) CalculateMigrationsForRemoval(removeNodeID string) []Migrati
 			}
 			tasks = append(tasks, task)
 			
-			fmt.Printf("[MIGRATION] Removal tasks: %s [%d->%d] -> %s\n", removeNodeID, prevHash, vhash, nextNode)
+			// fmt.Printf("[MIGRATION] Removal tasks: %s [%d->%d] -> %s\n", removeNodeID, prevHash, vhash, nextNode)
 		}
 	}
 
