@@ -52,6 +52,12 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 		}
 		command := resultSlice[0]
 
+		// handle CLUSTER commands first
+		if command == "CLUSTER" {
+			handleClusterCommand(conn, resultSlice, cache, nodeState)
+			continue // skip forward check
+		}
+
 		// extract key from command
 		var key string
 		if len(resultSlice) >= 2 {
