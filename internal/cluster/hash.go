@@ -12,6 +12,7 @@ import (
 type HashRing struct {
 	hashValues []uint32 // store sorted list of hash values for binary search
 	hashToNode map[uint32]string // map hash values to physical server IDs
+	nodeAddresses map[string]string
 	virtualNodes int // number of virtual nodes per server
 	mu sync.RWMutex
 }
@@ -21,6 +22,7 @@ func NewHashRing(virtualNodes int) *HashRing {
 	return &HashRing{
 		hashValues: make([]uint32, 0),
 		hashToNode: make(map[uint32]string),
+		nodeAddresses: make(map[string]string),
 		virtualNodes: virtualNodes,
 	}
 }
@@ -141,4 +143,36 @@ func (hr *HashRing) GetNodes() []string {
 // returns the number of physical nodes
 func (hr *HashRing) GetNodeCount() int {
 	return len(hr.GetNodes())
+}
+
+// exported version of hash() for external use
+func (hr *HashRing) Hash(key string) uint32 {
+	return hr.hash(key)
+}
+
+// returns the network address for a given node ID
+func (hr *HashRing) GetNodeAddress(nodeID string) string {
+	hr.mu.RLock()
+	defer hr.mu.RUnlock()
+
+	if hr.nodeAddresses == nil {
+		return ""
+	}
+	return hr.nodeAddresses[nodeID]
+}
+
+// returns all unique node IDs in the ring
+func (hr *HashRing) GetAllNodes() []string {
+	return hr.GetNodes()
+}
+
+// sets node addresses for hash ring
+func (hr *HashRing) SetNodeAddress(nodeID string, address string) {
+	hr.mu.Lock()
+	defer hr.mu.Unlock()
+	
+	if hr.nodeAddresses == nil {
+		hr.nodeAddresses = make(map[string]string)
+	}
+	hr.nodeAddresses[nodeID] = address
 }
