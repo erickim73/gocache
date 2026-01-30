@@ -37,6 +37,7 @@ func (m *Migrator) MigrateToNewNode(newNodeID string, newNodeAddr string) error 
 		fmt.Printf("[MIGRATION] No keys to migrate\n")
 		// add node to ring even if no data to migrate
 		m.hashRing.AddNode(newNodeID)
+		m.hashRing.SetNodeAddress(newNodeID, newNodeAddr)
 		return nil
 	}
 
@@ -115,6 +116,7 @@ func (m *Migrator) MigrateFromLeavingNode(leavingNodeID string) error {
 	if len(tasks) == 0 {
 		fmt.Printf("[MIGRATION] No keys to migrate\n")
 		m.hashRing.RemoveNode(leavingNodeID)
+		m.hashRing.SetNodeAddress(leavingNodeID, "")
 		return nil
 	}
 

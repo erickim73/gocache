@@ -48,6 +48,9 @@ func handleClusterAddNode(conn net.Conn, command []interface{}, cache *cache.Cac
 
 	// get migrator from node state. handles all migration logic
 	migrator := nodeState.GetMigrator()
+	if migrator == nil {
+		conn.Write([]byte(protocol.EncodeError("Cluster not initialized")))
+	}
 
 	// trigger the migration process
 	err := migrator.MigrateToNewNode(newNodeID, newNodeAddr)

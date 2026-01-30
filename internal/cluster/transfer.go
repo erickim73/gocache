@@ -112,6 +112,15 @@ func TransferKeysBatch(targetAddr string, keys []string, values map[string]strin
 
 	fmt.Printf("[TRANSFER] Splitting %d keys into %d batches of %d\n", totalKeys, numBatches, batchSize)
 
+	// create connection once for all batches
+	conn, err := net.DialTimeout("tcp", targetAddr, 5 * time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to connect to %s: %v", targetAddr, err)
+	}
+	defer conn.Close()
+
+	reader := bufio.NewReader(conn)
+
 	// process each batch
 	for i := 0; i < numBatches; i++ {
 		// calculate batch boundaries
@@ -133,7 +142,7 @@ func TransferKeysBatch(targetAddr string, keys []string, values map[string]strin
 		fmt.Printf("[TRANSFER] Batch %d/%d: transferring keys %d-%d\n", i + 1, numBatches, start, end - 1)
 
 		// transfer this batch with retries
-		err := TransferKeysWithRetry(targetAddr, batchKeys, batchValues, 3)
+		err := transferKeysOnConnection(conn, reader, batchKeys, batchValues)
 		if err != nil {
 			// if any batch fails, stop migration
 			return fmt.Errorf("batch %d failed: %v", i + 1, err)
@@ -145,6 +154,48 @@ func TransferKeysBatch(targetAddr string, keys []string, values map[string]strin
 	}
 
 	fmt.Printf("[TRANSFER] All %d batches completed successfully\n", numBatches)
+	return nil
+}
+
+// transfers keys by using existing connection
+func transferKeysOnConnection(conn net.Conn, reader *bufio.Reader, keys []string, values map[string]string) error {
+	successCount := 0
+	failCount := 0
+
+	for _, key := range keys {
+		value := values[key]
+		cmd := protocol.EncodeArray([]interface{}{"SET", key, value})
+
+		_, err := conn.Write([]byte(cmd))
+		if err != nil {
+			failCount++
+			fmt.Printf("[TRANSFER] Failed to send key %s: %v\n", key, err)
+			continue
+		}
+
+		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		response, err := protocol.Parse(reader)
+		if err != nil {
+			failCount++
+			fmt.Printf("[TRANSFER] Failed to read response for key %s: %v\n", key, err)
+			continue
+		}
+
+		if !isOKResponse(response) {
+			failCount++
+			fmt.Printf("[TRANSFER] Target rejected key %s: %v\n", key, response)
+			continue
+		}
+
+		successCount++
+	}
+
+	fmt.Printf("[TRANSFER] Batch completed: %d succeded, %d failed out of %d keys\n", successCount, failCount, len(keys))
+
+	if failCount > 0 {
+		return fmt.Errorf("transfer incomplete: %d keys failed", failCount)
+	}
+
 	return nil
 }
 

@@ -75,6 +75,11 @@ func (hr *HashRing) CalculateMigrationsForRemoval(removeNodeID string) []Migrati
 	hr.mu.RLock()
 	defer hr.mu.RUnlock()
 
+	if len(hr.hashValues) == 0 {
+		fmt.Printf("[MIGRATION] Warning: Cannot remove from empty hash ring\n")
+		return []MigrationTask{}
+	}
+
 	tasks := []MigrationTask{}
 
 	// find all virtual nodes belonging to the node being removed

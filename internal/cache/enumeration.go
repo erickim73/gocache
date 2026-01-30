@@ -1,5 +1,7 @@
 package cache
 
+import "time"
+
 // returns all keys stored in the cache right now
 func (c *Cache) GetAllKeys() []string {
 	c.mu.RLock()
@@ -55,7 +57,7 @@ func (c *Cache) GetKeysWithValues(start uint32, end uint32, hashFunc func (strin
 
 	for key, item := range c.data {
 		// skip expired items
-		if item.expiresAt.IsZero()  {
+		if !item.expiresAt.IsZero() && time.Now().After(item.expiresAt)  {
 			continue
 		}
 
