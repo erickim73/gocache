@@ -96,7 +96,7 @@ func TestKeyEnumeration(t *testing.T) {
 	// create cache and hash ring
 	c, err := cache.NewCache(1000)
 	if err != nil {
-		fmt.Errorf("Error creating cache: %v\n", err)
+		t.Errorf("Error creating cache: %v\n", err)
 	}
 	hr := NewHashRing(100)
 
@@ -139,7 +139,7 @@ func TestFullMigrationFlow(t *testing.T) {
 	// setup
 	c, err := cache.NewCache(1000)
 	if err != nil {
-		fmt.Errorf("Error creating cache: %v\n", err)
+		t.Errorf("Error creating cache: %v\n", err)
 	}
 
 	hr := NewHashRing(10)
@@ -159,7 +159,7 @@ func TestFullMigrationFlow(t *testing.T) {
 	fmt.Printf("Initial key count: %d\n", initialCount)
 
 	// calculate migrations for node4
-	tasks := hr.CalculateMigrations("node4)")
+	tasks := hr.CalculateMigrations("node4")
 
 	// calculate how many keys would move
 	totalToMigrate := 0
@@ -177,5 +177,39 @@ func TestFullMigrationFlow(t *testing.T) {
 	// allow 10% margin of error due to hashing variance
 	if actualPercent < expectedPercent - 10 || actualPercent > expectedPercent + 10 {
 		t.Errorf("Expected ~%.0f%% keys to migrate, got %.1f%%", expectedPercent, actualPercent)
+	}
+}
+
+// benchmarks hash calculation performance
+func BenchmarkHashCalculation(b *testing.B) {
+	hr := NewHashRing(100)
+	testKey := "user:12345"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = hr.Hash(testKey)
+	}
+}
+
+// benchmarks finding keys in a range
+func BenchmarkKeyEnumeration(b *testing.B) {
+	c, err := cache.NewCache(10000)
+	if err != nil {
+		b.Errorf("Error creating cache: %v\n", err)
+	}
+	hr := NewHashRing(100)
+
+	// add test data
+	for i := 0; i < 10000; i++ {
+		key := fmt.Sprintf("key:%d", i)
+		c.Set(key, "value", 0)
+	}
+
+	start := uint32(0)
+	end := uint32(2147483647)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = c.GetKeysInHashRange(start, end, hr.Hash)
 	}
 }
