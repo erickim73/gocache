@@ -7,6 +7,7 @@ import (
 	"github.com/erickim73/gocache/internal/cluster"
 	"github.com/erickim73/gocache/internal/config"
 	"github.com/erickim73/gocache/internal/replication"
+	"github.com/erickim73/gocache/internal/cache"
 )
 
 // NodeState holds mutable state that can change during runtime
@@ -19,7 +20,9 @@ type NodeState struct {
 	// cluster routing components for key distribution
 	hashRing *cluster.HashRing // determines which nodes owns which keys
 	config *config.Config // cluster configuration with all node info
-	
+	migrator *cluster.Migrator
+	cache *cache.Cache
+
 }
 
 // check if running in cluster mode
@@ -134,4 +137,32 @@ func NewNodeState(role string, leader *replication.Leader, leaderAddr string) (*
 		hashRing: nil,
 		config: nil,
 	}, nil
+}
+
+// returns the hash ring for cluster operations
+func (ns *NodeState) GetHashRing() *cluster.HashRing {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+	return ns.hashRing
+}
+
+// returns the migrator for data migration operations
+func (ns *NodeState) GetMigrator() *cluster.Migrator {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+	return ns.migrator
+}
+
+// sets the migrator for data migration operations
+func (ns *NodeState) SetMigrator(migrator *cluster.Migrator) {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	ns.migrator = migrator
+}
+
+// sets the cache reference
+func (ns *NodeState) SetCache(c *cache.Cache) {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	ns.cache = c
 }
