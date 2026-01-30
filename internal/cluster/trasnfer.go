@@ -147,3 +147,53 @@ func TransferKeysBatch(targetAddr string, keys []string, values map[string]strin
 	fmt.Printf("[TRANSFER] All %d batches completed successfully\n", numBatches)
 	return nil
 }
+
+// checks if a response indicates success
+func isOKResponse(response interface{}) bool {
+	// response could be string or error
+	switch v := response.(type) {
+	case string:
+		return v == "OK"
+	case error:
+		return false
+	default:
+		return false
+	}
+}
+
+// checks that keys were successfully transferred
+func VerifyTransfer(targetAddr string, keys []string) error {
+	// connect to target
+	conn, err := net.DialTimeout("tcp", targetAddr, 5 * time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to connect for verification: %v", err)
+	}
+	defer conn.Close()
+
+	reader := bufio.NewReader(conn)
+
+	// check each key exists on target
+	for _, key := range keys {
+		// send GET command
+		cmd := protocol.EncodeArray([]interface{}{"GET", key})
+		_, err := conn.Write([]byte(cmd))
+		if err != nil {
+			return fmt.Errorf("verificatoin failed for key %s: %v", key, err)
+		}
+
+		// read response
+		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		response, err := protocol.Parse(reader)
+		if err != nil {
+			return fmt.Errorf("verification read failed for key %s: %v", key, err)
+		}
+
+		// nil response means key doesn't exist on target
+		if response == nil {
+			return fmt.Errorf("key %s not found on target", key)
+		}
+	}
+
+	fmt.Printf("[TRANSFER] Verification passed: all %d keys exist on target\n", len(keys))
+	return nil
+}
