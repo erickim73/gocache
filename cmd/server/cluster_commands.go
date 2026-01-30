@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/server"
@@ -46,6 +47,27 @@ func handleClusterAddNode(conn net.Conn, command []interface{}, cache *cache.Cac
 
 	fmt.Printf("[CLUSTER] Adding node %s at %s\n", newNodeID, newNodeAddr)
 
+	// check if node is already in cluster
+	hashRing := nodeState.GetHashRing()
+	existingNodes := hashRing.GetAllNodes()
+	for _, nodeID := range existingNodes {
+		if nodeID == newNodeID {
+			conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("Node %s already exists in cluster", newNodeID))))
+			return
+		}
+	}
+
+	// test connection to new node before starting migration
+	fmt.Printf("[CLUSTER] Testing connection to %s...\n", newNodeAddr)
+	testConn, err := net.DialTimeout("tcp", newNodeAddr, 2 * time.Second)
+	if err != nil {
+		errorMsg := fmt.Sprintf("Cannot connect to node %s at %s. Make sure the node is running first. Error: %v", newNodeID, newNodeAddr, err)
+		conn.Write([]byte(protocol.EncodeError(errorMsg)))
+		return
+	}
+	testConn.Close()
+	fmt.Printf("[CLUSTER] Connection test successful\n")
+
 	// get migrator from node state. handles all migration logic
 	migrator := nodeState.GetMigrator()
 	if migrator == nil {
@@ -54,7 +76,7 @@ func handleClusterAddNode(conn net.Conn, command []interface{}, cache *cache.Cac
 	}
 
 	// trigger the migration process
-	err := migrator.MigrateToNewNode(newNodeID, newNodeAddr)
+	err = migrator.MigrateToNewNode(newNodeID, newNodeAddr)
 	if err != nil {
 		// if migration fails, return error to client
 		conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("Migration failed: %v", err))))

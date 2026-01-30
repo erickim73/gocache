@@ -1,0 +1,36 @@
+# node 4 configuration
+node_id: "node4"
+
+# cache settings
+max_cache_size: 1000
+aof_file: "cmd/data/node4-cache.aof"
+snapshot_file: "cmd/data/node4-cache.rdb"
+sync_policy: "everysecond"
+snapshot_interval_seconds: 300
+growth_factor: 2
+
+# cluster topology
+nodes:
+  - id: "node1"
+    host: "localhost"
+    port: 8379         # redis clients connect here
+    repl_port: 8479    # other nodes connect here for replication
+    priority: 3        # highest priority = becomes leader first
+
+  - id: "node2"
+    host: "localhost"
+    port: 8380
+    repl_port: 8480
+    priority: 2
+
+  - id: "node3"
+    host: "localhost"  
+    port: 8381
+    repl_port: 8481
+    priority: 1
+  
+  - id: "node4"
+    host: "localhost"  
+    port: 8382
+    repl_port: 8482
+    priority: 0
