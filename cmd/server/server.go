@@ -25,7 +25,7 @@ func startSimpleMode(cfg *config.Config) {
 	fmt.Printf("GrowthFactor: %d\n", cfg.GrowthFactor)
 
 	// create a cache
-	myCache, err := cache.New(cfg.MaxCacheSize)
+	myCache, err := cache.NewCache(cfg.MaxCacheSize)
 	if err != nil {
 		fmt.Printf("error creating new cache: %v\n", err)
 		return
@@ -132,7 +132,7 @@ func startClusterMode(cfg *config.Config) {
 	}
 
 	// create a cache
-	myCache, err := cache.New(cfg.MaxCacheSize)
+	myCache, err := cache.NewCache(cfg.MaxCacheSize)
 	if err != nil {
 		fmt.Printf("error creating new cache: %v\n", err)
 		return

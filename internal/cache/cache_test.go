@@ -3,13 +3,12 @@ package cache
 import (
 	"testing"
 	"time"
-	
 )
 
 func TestSetAndGet(t *testing.T) {
-	cache, _ := New(100)
+	cache, _ := NewCache(100)
 
-	cache.Set("eric", "smart", 100 * time.Second)
+	cache.Set("eric", "smart", 100*time.Second)
 	result, exists := cache.Get("eric")
 	expected := "smart"
 
@@ -22,9 +21,9 @@ func TestSetAndGet(t *testing.T) {
 }
 
 func TestInvalidKey(t *testing.T) {
-	cache, _ := New(100)
+	cache, _ := NewCache(100)
 
-	cache.Set("eric", "smart", 100 * time.Second)
+	cache.Set("eric", "smart", 100*time.Second)
 	result, exists := cache.Get("aiden")
 
 	if exists {
@@ -36,7 +35,7 @@ func TestInvalidKey(t *testing.T) {
 }
 
 func TestLRUEviction(t *testing.T) {
-	cache, _ := New(3)
+	cache, _ := NewCache(3)
 
 	cache.Set("A", "1", 0) // [A]
 	cache.Set("B", "2", 0) // [B, A]

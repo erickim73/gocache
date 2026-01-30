@@ -11,7 +11,7 @@ import (
 
 func setupBenchmark(b *testing.B, policy SyncPolicy) (*cache.Cache, *AOF) {
 	// create cache
-	c, _ := cache.New(100000)
+	c, _ := cache.NewCache(100000)
 
 	// use unique filename for each test
 	fileName := fmt.Sprintf("bench_test_%d.aof", time.Now().UnixNano())
@@ -34,7 +34,7 @@ func cleanupBenchmark(aof *AOF) {
 }
 
 func BenchmarkSetNoPersistence(b *testing.B) {
-	c, _ := cache.New(100000)
+	c, _ := cache.NewCache(100000)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

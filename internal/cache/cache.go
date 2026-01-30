@@ -26,7 +26,7 @@ type SnapshotEntry struct {
 	ExpiresAt time.Time
 }
 
-func New(maxSize int) (*Cache, error) {	
+func NewCache(maxSize int) (*Cache, error) {	
 	return &Cache{
 		data: make(map[string]*CacheItem),
 		lru: &lru.LRU{},

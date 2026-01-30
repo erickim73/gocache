@@ -29,7 +29,7 @@ type TestServer struct {
 // startTestLeader starts a leader server for testing
 func startTestLeader(t *testing.T, port int) *TestServer {
 	// create cache
-	myCache, err := cache.New(100)
+	myCache, err := cache.NewCache(100)
 	if err != nil {
 		t.Fatalf("Failed to create cache: %v", err)
 	}
@@ -85,7 +85,7 @@ func startTestLeader(t *testing.T, port int) *TestServer {
 // startTestFollower starts a follower server for testing
 func startTestFollower(t *testing.T, port int, leaderAddr string) *TestServer {
 	// create cache
-	myCache, err := cache.New(100)
+	myCache, err := cache.NewCache(100)
 	if err != nil {
 		t.Fatalf("Failed to create cache: %v", err)
 	}
