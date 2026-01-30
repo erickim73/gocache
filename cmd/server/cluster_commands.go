@@ -138,6 +138,13 @@ func handleClusterAddNode(conn net.Conn, command []interface{}, cache *cache.Cac
 		}
 	}
 
+	// also notify the new node to add itself
+	fmt.Printf("[CLUSTER] Notifying new node %s to add itself\n", newNodeID)
+	err = notifyNodeAboutTopologyChange(newNodeAddr, "ADD", newNodeID, newNodeAddr)
+	if err != nil {
+		fmt.Printf("[CLUSTER] Warning: Failed to notify new node: %v\n", err)
+	}
+
 	fmt.Printf("[CLUSTER] Topology broadcast complete\n")
 	conn.Write([]byte(protocol.EncodeSimpleString("OK")))
 }

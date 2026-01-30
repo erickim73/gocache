@@ -30,6 +30,11 @@ func (m *Migrator) MigrateToNewNode(newNodeID string, newNodeAddr string) error 
 
 	fmt.Printf("[MIGRATION] Starting migration to %s at %s\n", newNodeID, newNodeAddr)
 
+	// add node to hash ring
+	fmt.Printf("[MIGRATION] Adding %s to hash ring with address %s\n", newNodeID, newNodeAddr)
+	m.hashRing.AddNode(newNodeID)
+	m.hashRing.SetNodeAddress(newNodeID, newNodeAddr)
+
 	// calculate which keys need to move by determining which has range will be owned by new node
 	tasks := m.hashRing.CalculateMigrations(newNodeID)
 
@@ -93,10 +98,6 @@ func (m *Migrator) MigrateToNewNode(newNodeID string, newNodeAddr string) error 
 		totalKeysMigrated += len(keys)
 		fmt.Printf("[MIGRATION] Task %d complete: %d keys migrated\n", i + 1, len(keys))
 	}
-
-	// add node to hash ring
-	fmt.Printf("[MIGRATION] Adding %s to hash ring\n", newNodeID)
-	m.hashRing.AddNode(newNodeID)
 
 	fmt.Printf("[MIGRATION] Migration complete: %d total keys migrated to %s\n", totalKeysMigrated, newNodeID)
 
