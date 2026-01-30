@@ -203,6 +203,25 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 	nodeState.SetHashRing(hashRing)
 	fmt.Println("✓ Cluster routing enabled (hash ring + config)")
 
+	// set node addresses in hash ring
+	fmt.Println("\n=== Setting Node Addresses in Hash Ring ===")
+	for _, node := range cfg.Nodes {
+		nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
+		hashRing.SetNodeAddress(node.ID, nodeAddr)
+		fmt.Printf("  ✓ Set address for %s: %s\n", node.ID, nodeAddr)
+	}
+	fmt.Println("========================================")
+
+	// create migrator and set it in node state
+	fmt.Println("\n=== Initializing Migrator ===")
+	migrator := cluster.NewMigrator(myCache, hashRing)
+	nodeState.SetMigrator(migrator)
+	nodeState.SetCache(myCache)
+	fmt.Println("✓ Migrator initialized")
+	fmt.Println("=============================\n")
+
+	fmt.Println("✓ Cluster routing enabled (hash ring + config)")
+
 	// create leader
 	leader, err := replication.NewLeader(myCache, aof, myNode.ReplPort) 
 	if err != nil {
