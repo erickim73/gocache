@@ -174,3 +174,27 @@ func (m *Migrator) MigrateFromLeavingNode(leavingNodeID string) error {
 
 	return nil
 }
+
+// returns information about ongoing migrations
+type MigrationStatus struct {
+	InProgress bool 
+	nodeID string
+	Phase string
+}
+
+// returns current migration status
+func (m *Migrator) Status() MigrationStatus {
+	// check if migration lock is held. if we can't acquire it, migration is in progress
+	locked := m.mu.TryLock()
+	if locked {
+		m.mu.Unlock()
+		return MigrationStatus{
+			InProgress: false,
+		}
+	}
+
+	return MigrationStatus{
+		InProgress: true,
+		Phase: "unknown",
+	}
+}
