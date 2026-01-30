@@ -19,6 +19,7 @@ type NodeState struct {
 	// cluster routing components for key distribution
 	hashRing *cluster.HashRing // determines which nodes owns which keys
 	config *config.Config // cluster configuration with all node info
+	
 }
 
 // check if running in cluster mode

@@ -73,7 +73,7 @@ func (hr *HashRing) CalculateMigrations(newNodeID string) []MigrationTask {
 // determines where keys should go when a node leaves
 func (hr *HashRing) CalculateMigrationsForRemoval(removeNodeID string) []MigrationTask {
 	hr.mu.RLock()
-	defer hr.mu.Unlock()
+	defer hr.mu.RUnlock()
 
 	tasks := []MigrationTask{}
 

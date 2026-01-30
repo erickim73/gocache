@@ -178,7 +178,7 @@ func VerifyTransfer(targetAddr string, keys []string) error {
 		cmd := protocol.EncodeArray([]interface{}{"GET", key})
 		_, err := conn.Write([]byte(cmd))
 		if err != nil {
-			return fmt.Errorf("verificatoin failed for key %s: %v", key, err)
+			return fmt.Errorf("verification failed for key %s: %v", key, err)
 		}
 
 		// read response

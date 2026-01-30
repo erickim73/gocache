@@ -6,6 +6,7 @@ import (
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/server"
+	"github.com/erickim73/gocache/internal/cluster"
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
@@ -35,7 +36,7 @@ func handleClusterCommand(conn net.Conn, command []interface{}, cache *cache.Cac
 // adds a new node to the cluster and triggers data migration
 // command format: CLUSTER ADDNODE <nodeID> <address>
 func handleClusterAddNode(conn net.Conn, command []interface{}, cache *cache.Cache, nodeState *server.NodeState) {
-	if len(command < 4) {
+	if len(command) < 4 {
 		conn.Write([]byte(protocol.EncodeError("ADDNODE requires nodeID and address")))
 		return
 	}
@@ -80,7 +81,7 @@ func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.
 
 	// execute each migration task
 	for _, task := range tasks {
-		fmt.Printf("[CLUSTER] Migrating keys from %s to %s\n", tasks.FromNode, task.ToNode)
+		fmt.Printf("[CLUSTER] Migrating keys from %s to %s\n", task.FromNode, task.ToNode)
 
 		// get target node's address
 		targetAddr := hashRing.GetNodeAddress(task.ToNode)
@@ -118,4 +119,22 @@ func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.
 	hashRing.RemoveNode(nodeID)
 
 	conn.Write([]byte(protocol.EncodeSimpleString("OK")))
+}
+
+// lists all nodes in the cluster with their status
+func handleClusterNodes(conn net.Conn, nodeState *server.NodeState) {
+	// get hash ring to access node information
+	hashRing := nodeState.GetHashRing()
+
+	// get list of all node IDs
+	nodes := hashRing.GetAllNodes()
+
+	// build response string with node information
+	response := ""
+	for _, nodeID := range nodes {
+		addr := hashRing.GetNodeAddress(nodeID)
+		response += fmt.Sprintf("%s %s active\n", nodeID, addr)
+	}
+
+	conn.Write([]byte(protocol.EncodeBulkString(response, false)))
 }
