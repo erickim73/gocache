@@ -6,7 +6,6 @@ import (
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/server"
-	"github.com/erickim73/gocache/internal/cluster"
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
@@ -72,51 +71,11 @@ func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.
 
 	// get migrator and hash ring
 	migrator := nodeState.GetMigrator()
-	hashRing := nodeState.GetHashRing()
-
-	fmt.Printf("[CLUSTER] Removing node %s\n", nodeID)
-
-	// calculate which keys need to migrate away from the dying node
-	tasks := hashRing.CalculateMigrationsForRemoval(nodeID)
-
-	// execute each migration task
-	for _, task := range tasks {
-		fmt.Printf("[CLUSTER] Migrating keys from %s to %s\n", task.FromNode, task.ToNode)
-
-		// get target node's address
-		targetAddr := hashRing.GetNodeAddress(task.ToNode)
-		
-		// get keys in this hash range
-		keys := cache.GetKeysInHashRange(task.StartHash, task.EndHash, hashRing.Hash)
-
-		if len(keys) == 0 {
-			continue
-		}
-
-		// get values for those keys
-		values := make(map[string]string)
-		for _, key := range keys {
-			value, exists := cache.Get(key)
-			if exists {
-				values[key] = value
-			}
-		}
-
-		// transfer keys to target node
-		err := cluster.TransferKeys(targetAddr, keys, values)
-		if err != nil {
-			conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("Transfer failed: %v", err))))
-			return
-		}
-
-		// delete keys from local cache after successful transfer
-		for _, key := range keys {
-			cache.Delete(key)
-		}
+	err := migrator.MigrateFromLeavingNode(nodeID)
+	if err != nil {
+		conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("Migration failed: %v", err))))
+		return
 	}
-
-	// remove node from hash ring
-	hashRing.RemoveNode(nodeID)
 
 	conn.Write([]byte(protocol.EncodeSimpleString("OK")))
 }

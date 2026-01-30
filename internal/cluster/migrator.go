@@ -178,7 +178,7 @@ func (m *Migrator) MigrateFromLeavingNode(leavingNodeID string) error {
 // returns information about ongoing migrations
 type MigrationStatus struct {
 	InProgress bool 
-	nodeID string
+	NodeID string
 	Phase string
 }
 
