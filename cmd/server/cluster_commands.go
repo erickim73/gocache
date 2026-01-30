@@ -124,7 +124,7 @@ func handleClusterAddNode(conn net.Conn, command []interface{}, cache *cache.Cac
 	fmt.Printf("[CLUSTER] Broadcasting node addition to other nodes...\n")
 	for _, node := range config.Nodes {
 		if node.ID == config.NodeID {
-			continue
+			continue // skip self
 		}
 
 		// connect to other node and tell it to add node4
@@ -160,6 +160,22 @@ func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.
 
 	fmt.Printf("[CLUSTER] Removing node %s\n", nodeID)
 
+	// check if node is already in cluster
+	hashRing := nodeState.GetHashRing()
+	existingNodes := hashRing.GetAllNodes()
+	nodeExists := false
+	for _, existingNodeID := range existingNodes {
+		if existingNodeID== nodeID {
+			nodeExists = true
+			break
+		}
+	}
+
+	if !nodeExists {
+		conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("Node %s not found in cluster", nodeID))))
+		return
+	}
+
 	// get migrator and hash ring
 	migrator := nodeState.GetMigrator()
 	if migrator == nil {
@@ -167,12 +183,44 @@ func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.
 		return
 	}
 
+	// trigger the migration process
 	err := migrator.MigrateFromLeavingNode(nodeID)
 	if err != nil {
 		conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("Migration failed: %v", err))))
 		return
 	}
 
+	// broadcast to all other nodes in cluster
+	config := nodeState.GetConfig()
+
+	fmt.Printf("[CLUSTER] Broadcasting node removal to other nodes...\n")
+	for _, node := range config.Nodes {
+		if node.ID == config.NodeID {
+			continue // skip self
+		}
+
+		// notify other node to remove the leaving node
+		nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
+		fmt.Printf("[CLUSTER] Notifying %s at %s to remove %s\n", node.ID, nodeAddr, nodeID)
+
+		err := notifyNodeAboutTopologyChange(nodeAddr, "REMOVE", nodeID, "")
+		if err != nil {
+			fmt.Printf("[CLUSTER] Warning: Failed to notify %s: %v\n", node.ID, err)
+			// continue anyway, not fatal
+		}
+	}
+
+	// also notify leaving node to remove itself from its own hash ring
+	leavingNodeAddr := hashRing.GetNodeAddress(nodeID)
+	if leavingNodeAddr != "" {
+		fmt.Printf("[CLUSTER] Notifying leaving node %s to remove itself\n", nodeID)
+		err = notifyNodeAboutTopologyChange(leavingNodeAddr, "REMOVE", nodeID, "")
+		if err != nil {
+			fmt.Printf("[CLUSTER] Warning: Failed to notify leaving node (may already b e down): %v\n", err)
+		}
+	}
+
+	fmt.Printf("[CLUSTER] Topology broadcast complete\n")
 	conn.Write([]byte(protocol.EncodeSimpleString("OK")))
 }
 
