@@ -102,7 +102,10 @@ func startClusterMode(cfg *config.Config) {
 	// get my node info
 	myNode, err := cfg.GetMyNode()
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		// node not in config -s tart in "pending join" mode
+		fmt.Printf("Node %s not found in initial cluster config\n", cfg.NodeID)
+		fmt.Printf("Starting in PENDING mode -waiting to be added via CLUSTER ADDNODE\n")
+		startPendingNode(cfg)
 		return
 	}
 
@@ -314,6 +317,83 @@ func startClientListener(port int, myCache *cache.Cache, aof *persistence.AOF, n
 		go handleConnection(conn, myCache, aof, nodeState)
 	}
 }
+
+// helper function to add this pending node
+func startPendingNode(cfg *config.Config) {
+	fmt.Printf("Starting server with config:\n")
+	fmt.Printf("MaxCacheSize: %d\n", cfg.MaxCacheSize)
+	fmt.Printf("AOFFileName: %s\n", cfg.AOFFileName)
+	fmt.Printf("SnapshotFileName: %s\n", cfg.SnapshotFileName)
+
+	fmt.Printf("\nNodeID: %s\n", cfg.NodeID)
+	fmt.Printf("Status: PENDING - waiting to join cluster\n")
+
+	// create cache
+	myCache, err := cache.NewCache(cfg.MaxCacheSize)
+	if err != nil {
+		fmt.Printf("error creating new cache: %v\n", err)
+		return
+	}
+
+	// create AOF
+	aof, err := persistence.NewAOF(cfg.AOFFileName, cfg.SnapshotFileName, cfg.GetSyncPolicy(), myCache, cfg.GrowthFactor)
+	if err != nil {
+		fmt.Printf("error creating new aof: %v\n", err)
+		return
+	}
+	defer aof.Close()
+
+	// recovery
+	err = recoverAOF(myCache, aof, cfg.AOFFileName, cfg.SnapshotFileName)
+	if err != nil {
+		fmt.Printf("error recovering from aof: %v\n", err)
+		return
+	}
+
+	// create hash ring with just the known nodes
+	fmt.Println("\n=== Initializing Hash Ring ===")
+	hashRing := cluster.NewHashRing(150)
+
+	// add nodes from config
+	for _, node := range cfg.Nodes {
+		hashRing.AddNode(node.ID)
+		nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
+		hashRing.SetNodeAddress(node.ID, nodeAddr)
+		fmt.Printf("  ✓ Added node: %s at %s\n", node.ID, nodeAddr)
+	}
+	fmt.Printf("✓ Hash ring initialized with %d nodes\n", len(cfg.Nodes))
+	fmt.Println("=========================")
+
+	// create node state (no replication yet)
+	nodeState, err := server.NewNodeState("pending", nil, "")
+	if err != nil {
+		fmt.Printf("error creating node state: %v\n", err)
+		return
+	}
+
+	// set cluster components
+	nodeState.SetConfig(cfg)
+	nodeState.SetHashRing(hashRing)
+
+	// create migrator
+	migrator := cluster.NewMigrator(myCache, hashRing)
+	nodeState.SetMigrator(migrator)
+	nodeState.SetCache(myCache)
+
+	fmt.Println("✓ Node ready to join cluster")
+
+	// determine port - use first available port or default
+	port := 8382
+
+	// for now, check if there's a port set at the top level
+	if cfg.Port > 0 {
+		port = cfg.Port
+	}
+
+	// start client listener
+	startClientListener(port, myCache, aof, nodeState)
+}
+
 
 func getHighestPriority(nodes []config.NodeInfo) int {
 	highest := 0

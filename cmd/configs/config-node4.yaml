@@ -1,5 +1,6 @@
 # node 4 configuration
 node_id: "node4"
+port: 8382
 
 # cache settings
 max_cache_size: 1000
