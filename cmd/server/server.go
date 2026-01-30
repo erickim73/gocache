@@ -218,7 +218,7 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 	nodeState.SetMigrator(migrator)
 	nodeState.SetCache(myCache)
 	fmt.Println("✓ Migrator initialized")
-	fmt.Println("=============================\n")
+	fmt.Println("=============================")
 
 	fmt.Println("✓ Cluster routing enabled (hash ring + config)")
 
@@ -250,6 +250,24 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	// set cluster components in node state for routing
 	nodeState.SetConfig(cfg)
 	nodeState.SetHashRing(hashRing)
+
+	// set node addresses in hash ring
+	fmt.Println("\n=== Setting Node Addresses in Hash Ring ===")
+	for _, node := range cfg.Nodes {
+		nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
+		hashRing.SetNodeAddress(node.ID, nodeAddr)
+		fmt.Printf("  ✓ Set address for %s: %s\n", node.ID, nodeAddr)
+	}
+	fmt.Println("========================================")
+
+	// create migrator and set it in node state
+	fmt.Println("\n=== Initializing Migrator ===")
+	migrator := cluster.NewMigrator(myCache, hashRing)
+	nodeState.SetMigrator(migrator)
+	nodeState.SetCache(myCache)
+	fmt.Println("✓ Migrator initialized")
+	fmt.Println("=============================")
+
 	fmt.Println("✓ Cluster routing enabled (hash ring + config)")
 
 	var leaderClientAddr string
