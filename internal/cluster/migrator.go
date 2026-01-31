@@ -29,14 +29,22 @@ func (m *Migrator) MigrateToNewNode(newNodeID string, newNodeAddr string) error 
 	defer m.mu.Unlock()
 
 	fmt.Printf("[MIGRATION] Starting migration to %s at %s\n", newNodeID, newNodeAddr)
+	
+	// calculate which keys need to move by determining which has range will be owned by new node
+	fmt.Printf("[MIGRATION] Calculating migration tasks...\n")
+	tasks := m.hashRing.CalculateMigrations(newNodeID)
+
+	if len(tasks) == 0 {
+		fmt.Printf("[MIGRATION] No keys to migrate\n")
+	} else {
+		fmt.Printf("[MIGRATION] Found %d migration tasks\n", len(tasks))
+	}
 
 	// add node to hash ring
 	fmt.Printf("[MIGRATION] Adding %s to hash ring with address %s\n", newNodeID, newNodeAddr)
 	m.hashRing.AddNode(newNodeID)
 	m.hashRing.SetNodeAddress(newNodeID, newNodeAddr)
 
-	// calculate which keys need to move by determining which has range will be owned by new node
-	tasks := m.hashRing.CalculateMigrations(newNodeID)
 
 	if len(tasks) == 0 {
 		fmt.Printf("[MIGRATION] No keys to migrate\n")
