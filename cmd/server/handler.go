@@ -104,6 +104,10 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 		case "DEL":
 			// handleDelete(conn, resultSlice, cache, aof, leader)
 			handleDelete(conn, resultSlice, cache, aof, nil)
+		case "DBSIZE":
+			handleDBSize(conn, cache)
+		case "CLUSTER":
+			handleClusterCommand(conn, resultSlice, cache, nodeState)
 		default:
 			conn.Write([]byte(protocol.EncodeError("Unknown command " + command.(string))))
 		}
@@ -205,4 +209,15 @@ func handleDelete(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, 
 	}
 
 	conn.Write([]byte(protocol.EncodeSimpleString("OK")))
+}
+
+// returns the number of keys in the cache
+func handleDBSize(conn net.Conn, cache *cache.Cache) {
+	// get all keys
+	keys := cache.GetAllKeys()
+	count := len(keys)
+
+	// encode as integer
+	response := fmt.Sprintf(":%d\r\n", count)
+	conn.Write([]byte(response))
 }
