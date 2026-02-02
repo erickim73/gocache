@@ -181,3 +181,104 @@ func (hr *HashRing) SetNodeAddress(nodeID string, address string) {
 	}
 	hr.nodeAddresses[nodeID] = address
 }
+
+// returns the shard ID responsible for the given key
+func (hr *HashRing) GetShard(key string) (string, error) {
+	hr.mu.RLock()
+	defer hr.mu.RUnlock()
+
+	// check if ring is empty
+	if len(hr.hashValues) == 0 {
+		return "", fmt.Errorf("hash ring is empty")
+	}
+
+	keyHash := hr.hash(key)
+
+	// binary search to find first virtual node >= keyHash
+	idx := sort.Search(len(hr.hashValues), func(i int) bool {
+		return hr.hashValues[i] >= keyHash
+	})
+
+	// handle wrap around case
+	if idx >= len(hr.hashValues) {
+		idx = 0
+	}
+
+	// get hash value at index
+	hashValue := hr.hashValues[idx]
+
+	// look up which shard owns this virtual node
+	shardID := hr.hashToShard[hashValue]
+
+	return shardID, nil
+}
+
+// sets which nodes belong to a shard [leader, follower1, follower2...]
+func (hr *HashRing) SetShardNodes(shardID string, nodeIDs []string) {
+	hr.mu.Lock()
+	defer hr.mu.Unlock()
+
+	hr.shardToNodes[shardID] = nodeIDs
+	fmt.Printf("[HASH RING] Set shard %s nodes: %v\n", shardID, nodeIDs)
+}
+
+// returns all nodes in a shard [leader1, follower1, ...]
+func (hr *HashRing) GetShardNodes(shardID string) ([]string, error) {
+	hr.mu.RLock()
+	defer hr.mu.RUnlock()
+
+	nodes, exists := hr.shardToNodes[shardID]
+	if !exists {
+		return nil, fmt.Errorf("shard %s not found", shardID)
+	}
+
+	return nodes, nil
+}
+
+// returns the leader node ID for a shard (first node in list)
+func (hr *HashRing) GetShardLeader(shardID string) (string, error) {
+	nodes, err := hr.GetShardNodes(shardID) 
+	if err != nil {
+		return "", err
+	}
+
+	if len(nodes) == 0 {
+		return "", fmt.Errorf("shard %s has no nodes", shardID)
+	}
+
+	// first node is always the leader
+	return nodes[0], nil
+}
+
+// returns follower node IDs for a shard
+func (hr *HashRing) GetShardFollowers(shardID string) ([]string, error) {
+	nodes, err := hr.GetShardNodes(shardID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(nodes) <= 1 {
+		return []string{}, nil // no followers
+	}
+
+	// all nodes after first are followers
+	return nodes[1:], nil
+}
+
+// returns all unique shard IDs in the ring
+func (hr *HashRing) GetAllShards() []string {
+	hr.mu.RLock()
+	defer hr.mu.RUnlock()
+
+	uniqueShards := make(map[string]bool)
+	for _, shardID := range hr.hashToShard {
+		uniqueShards[shardID] = true
+	}
+
+	shards := make([]string, 0, len(uniqueShards))
+	for shardID := range uniqueShards {
+		shards = append(shards, shardID)
+	}
+
+	return shards
+}
