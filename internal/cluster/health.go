@@ -95,3 +95,58 @@ func (hc *HealthChecker) RegisterNode(nodeID string, address string) {
 		fmt.Printf("[HEALTH] Registered node %s at %s\n", nodeID, address)
 	}
 }
+
+// removes a node from health checking
+func (hc *HealthChecker) UnregisterNode(nodeID string) {
+	hc.mu.Lock()
+	defer hc.mu.Unlock()
+
+	delete(hc.nodeHealth, nodeID)
+	fmt.Printf("[HEALTH] Unregistered node %s\n", nodeID)
+}
+
+// begins the health checking loop
+func (hc *HealthChecker) Start() {
+	hc.wg.Add(1)
+	go hc.healthCheckLoop()
+	fmt.Printf("[HEALTH] Health checker started (interval: %v, threshold: %d, timeout: %v)\n", hc.checkInterval, hc.failureThreshold, hc.timeout)
+}
+
+// stops the health checker
+func (hc *HealthChecker) Stop() {
+	close(hc.stopCh)
+	hc.wg.Wait()
+	fmt.Printf("[HEALTH] Health checker stopped\n")
+}
+
+// runs periodic health checks
+func (hc *HealthChecker) healthCheckLoop() {
+	defer hc.wg.Done()
+
+	ticker := time.NewTicker(hc.checkInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <- ticker.C:
+			hc.checkAllNodes()
+		case <- hc.stopCh: 
+			return
+		}
+	}
+}
+
+// checks the health of all registered nodes
+func (hc *HealthChecker) checkAllNodes() {
+	hc.mu.RLock()
+	nodes := make([]*NodeHealth, 0, len(hc.nodeHealth))
+	for _, node := range hc.nodeHealth {
+		nodes = append(nodes, node)
+	}
+	hc.mu.RUnlock()
+
+	for _, node := range nodes {
+		hc.checkNode(node)
+	}
+}
+
