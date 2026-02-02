@@ -19,6 +19,7 @@ type Follower struct {
 	leaderAddr string       // host:replPort
 	id         string       // follower id
 	conn       net.Conn     // tcp connection to leader
+	reader     *bufio.Reader // follower uses this reader
 	lastSeqNum int64        // next sequence to assign
 	mu         sync.RWMutex // protects conn and lastSeqNum
 
@@ -148,6 +149,7 @@ func (f *Follower) connectToLeader() error {
 
 	f.mu.Lock()
 	f.conn = conn
+	f.reader = bufio.NewReader(conn)
 	f.mu.Unlock()
 	return nil
 }
@@ -156,6 +158,7 @@ func (f *Follower) sendSyncRequest() error {
 	f.mu.RLock()
 	conn := f.conn
 	lastSeqNum := f.lastSeqNum
+	reader := f.reader
 	f.mu.RUnlock()
 
 	if conn == nil {
@@ -175,9 +178,6 @@ func (f *Follower) sendSyncRequest() error {
 	f.mu.Lock()
 	_, err = conn.Write(encoded)
 	f.mu.Unlock()
-
-	// create a reader
-	reader := bufio.NewReader(conn)
 
 	for {
 		result, err := protocol.Parse(reader)
@@ -279,14 +279,14 @@ func (f *Follower) sendSyncRequest() error {
 func (f *Follower) processReplicationStream() error {
 	f.mu.Lock()
 	conn := f.conn
+	reader := f.reader
 	f.mu.Unlock()
 
 	if conn == nil {
 		return fmt.Errorf("no connection to leader")
 	}
 
-	// read from leader
-	reader := bufio.NewReader(conn)
+	fmt.Printf("[FOLLOWER %s] Starting replication stream processing\n", f.id)
 
 	for {
 		result, err := protocol.Parse(reader)
@@ -379,6 +379,7 @@ func (f *Follower) closeConn() {
 	if f.conn != nil {
 		_ = f.conn.Close()
 		f.conn = nil
+		f.reader = nil
 	}
 }
 
