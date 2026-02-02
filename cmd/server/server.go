@@ -251,6 +251,10 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 			hashRing.RemoveNode(failedNodeID)
 			hashRing.SetNodeAddress(failedNodeID, "")
 			fmt.Printf("[CLUSTER] Hash ring updated - node %s removed\n", failedNodeID)
+
+			// stop health checking the dead node
+			healthChecker.UnregisterNode(failedNodeID)
+			fmt.Printf("[CLUSTER] Stopped monitoring dead node %s\n", failedNodeID)
 		},
 		func(recoveredNodeID string) {
 			fmt.Printf("[CLUSTER] Node %s recovered! Adding back to hash ring...\n", recoveredNodeID)
@@ -262,6 +266,10 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 					hashRing.AddNode(recoveredNodeID)
 					hashRing.SetNodeAddress(recoveredNodeID, nodeAddr)
 					fmt.Printf("[CLUSTER] Hash ring updated - node %s added back\n", recoveredNodeID)
+					
+					// re-register for health checking
+					healthChecker.RegisterNode(recoveredNodeID, nodeAddr)
+					fmt.Printf("[CLUSTER] Resumed monitoring recovered node %s\n", recoveredNodeID)
 					break
 				}
 			}
@@ -352,6 +360,10 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	healthChecker.SetCallbacks(
 		func(failedNodeID string) {
 			fmt.Printf("[CLUSTER][FOLLOWER] Detected node %s failure\n", failedNodeID)
+
+			// stop health checking the dead node
+			healthChecker.UnregisterNode(failedNodeID)
+			fmt.Printf("[CLUSTER] Stopped monitoring dead node %s\n", failedNodeID)
 		},
 		func(recoveredNodeID string) {
 			fmt.Printf("[CLUSTER][FOLLOWER] Detected node %s recovery\n", recoveredNodeID)
