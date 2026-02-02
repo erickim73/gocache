@@ -106,6 +106,8 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 			handleDelete(conn, resultSlice, cache, aof, nil)
 		case "DBSIZE":
 			handleDBSize(conn, cache)
+		case "PING":
+			handlePing(conn)
 		case "CLUSTER":
 			handleClusterCommand(conn, resultSlice, cache, nodeState)
 		default:
@@ -220,4 +222,9 @@ func handleDBSize(conn net.Conn, cache *cache.Cache) {
 	// encode as integer
 	response := fmt.Sprintf(":%d\r\n", count)
 	conn.Write([]byte(response))
+}
+
+// responds to PING with PONG
+func handlePing(conn net.Conn) {
+	conn.Write([]byte(protocol.EncodeSimpleString("PONG")))
 }
