@@ -22,7 +22,7 @@ type NodeState struct {
 	config *config.Config // cluster configuration with all node info
 	migrator *cluster.Migrator
 	cache *cache.Cache
-
+	healthChecker *cluster.HealthChecker
 }
 
 // check if running in cluster mode
@@ -172,4 +172,18 @@ func (ns *NodeState) SetCache(c *cache.Cache) {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
 	ns.cache = c
+}
+
+// gets HealthChecker
+func (ns *NodeState) GetHealthChecker() *cluster.HealthChecker {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+	return ns.healthChecker
+}
+
+// sets HealthChecker
+func (ns *NodeState) SetHealthChecker(hc *cluster.HealthChecker) {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+	ns.healthChecker = hc
 }
