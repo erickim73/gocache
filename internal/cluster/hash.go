@@ -11,9 +11,10 @@ import (
 
 type HashRing struct {
 	hashValues []uint32 // store sorted list of hash values for binary search
-	hashToNode map[uint32]string // map hash values to physical server IDs
-	nodeAddresses map[string]string
+	hashToShard map[uint32]string // map hash values to shard IDs
+	nodeAddresses map[string]string 
 	virtualNodes int // number of virtual nodes per server
+	shardToNodes map[string][]string // shard ID -> [leader, follower1, follower2...]
 	mu sync.RWMutex
 }
 
@@ -21,8 +22,9 @@ type HashRing struct {
 func NewHashRing(virtualNodes int) *HashRing {
 	return &HashRing{
 		hashValues: make([]uint32, 0),
-		hashToNode: make(map[uint32]string),
+		hashToShard: make(map[uint32]string),
 		nodeAddresses: make(map[string]string),
+		shardToNodes: make(map[string][]string),
 		virtualNodes: virtualNodes,
 	}
 }
@@ -43,18 +45,18 @@ func (hr *HashRing) hash(key string) uint32 {
 	return binary.BigEndian.Uint32(hashBytes[:4])
 }
 
-// adds a physical node to the hash ring. creates multiple virtual nodes for the physical node
-func (hr *HashRing) AddNode(nodeID string) {
+// adds a shard to the hash ring. creates multiple virtual nodes for the shard
+func (hr *HashRing) AddShard(shardID string) {
 	hr.mu.Lock()
 	defer hr.mu.Unlock()
 
 	for i := 0; i < hr.virtualNodes; i++ {
 		// create unique virtual node key and hash it
-		virtualKey := fmt.Sprintf("%s-%d", nodeID, i)
+		virtualKey := fmt.Sprintf("%s-%d", shardID, i)
 		hashValue := hr.hash(virtualKey)
 		
 		// store mapping from hash position and add hash value to sorted list
-		hr.hashToNode[hashValue] = nodeID
+		hr.hashToShard[hashValue] = shardID
 		hr.hashValues = append(hr.hashValues, hashValue)
 	}
 
@@ -62,20 +64,23 @@ func (hr *HashRing) AddNode(nodeID string) {
 	sort.Slice(hr.hashValues, func(i int, j int) bool {
 		return hr.hashValues[i] < hr.hashValues[j]
 	})
+
+	fmt.Printf("[HASH RING] Added shard %s with %d virtual nodes\n", shardID, hr.virtualNodes)
+
 }
 
 // removes a physical node and all its virtual nodes from the ring
-func (hr *HashRing) RemoveNode(nodeID string) {
+func (hr *HashRing) RemoveNode(shardID string) {
 	hr.mu.Lock()
 	defer hr.mu.Unlock()
 
 	for i := 0; i < hr.virtualNodes; i++ {
 		// recreate unique virtual node key and hash it
-		virtualKey := fmt.Sprintf("%s-%d", nodeID, i)
+		virtualKey := fmt.Sprintf("%s-%d", shardID, i)
 		hashValue := hr.hash(virtualKey)
 
 		// remove from hash-to-node mapping
-		delete(hr.hashToNode, hashValue)
+		delete(hr.hashToShard, hashValue)
 
 		// remove hash value from sorted slice
 		for idx, val := range hr.hashValues {
@@ -113,7 +118,7 @@ func (hr *HashRing) GetNode(key string) (string, error) {
 	hashValue := hr.hashValues[idx]
 
 	// look up which physical node owns this virtual node
-	nodeID := hr.hashToNode[hashValue]
+	nodeID := hr.hashToShard[hashValue]
 
 	return nodeID, nil
 }
@@ -127,7 +132,7 @@ func (hr *HashRing) GetNodes() []string {
 	uniqueNodes := make(map[string]bool)
 
 	// iterate through all hash->node mappings
-	for _, nodeID := range hr.hashToNode {
+	for _, nodeID := range hr.hashToShard {
 		uniqueNodes[nodeID] = true
 	}
 
