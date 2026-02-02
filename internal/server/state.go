@@ -183,7 +183,7 @@ func (ns *NodeState) GetHealthChecker() *cluster.HealthChecker {
 
 // sets HealthChecker
 func (ns *NodeState) SetHealthChecker(hc *cluster.HealthChecker) {
-	ns.mu.RLock()
-	defer ns.mu.RUnlock()
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
 	ns.healthChecker = hc
 }
