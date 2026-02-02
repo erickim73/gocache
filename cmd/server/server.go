@@ -3,13 +3,14 @@ package main
 import (
 	"fmt"
 	"net"
+	"time"
 
-	"github.com/erickim73/gocache/internal/config"
 	"github.com/erickim73/gocache/internal/cache"
+	"github.com/erickim73/gocache/internal/cluster"
+	"github.com/erickim73/gocache/internal/config"
 	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/internal/replication"
 	"github.com/erickim73/gocache/internal/server"
-	"github.com/erickim73/gocache/internal/cluster"
 	"github.com/google/uuid"
 )
 
@@ -223,6 +224,57 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 	fmt.Println("✓ Migrator initialized")
 	fmt.Println("=============================")
 
+	// create and configure health check
+	fmt.Println("\n=== Initializing Health Checker (leader) ===")
+	healthChecker := cluster.NewHealthChecker(
+		hashRing, 
+		5 * time.Second, // check every 5 sec
+		3, // 3 failures before dead
+		2 * time.Second, // 2 second timeout per ping
+	)
+
+	// register all nodes from config
+	for _, node := range cfg.Nodes {
+		nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
+
+		// don't health check node itself
+		if node.ID != cfg.NodeID {
+			healthChecker.RegisterNode(node.ID, nodeAddr)
+			fmt.Printf("  ✓ Monitoring node %s at %s\n", node.ID, nodeAddr)
+		}
+	}
+
+	// set callbacks for node failure/recovery
+	healthChecker.SetCallbacks(
+		func(failedNodeID string) {
+			fmt.Printf("[CLUSTER] Node %s failed! Removing from hash ring...\n", failedNodeID)
+			hashRing.RemoveNode(failedNodeID)
+			hashRing.SetNodeAddress(failedNodeID, "")
+			fmt.Printf("[CLUSTER] Hash ring updated - node %s removed\n", failedNodeID)
+		},
+		func(recoveredNodeID string) {
+			fmt.Printf("[CLUSTER] Node %s recovered! Adding back to hash ring...\n", recoveredNodeID)
+
+			// find the node's address from config
+			for _, node := range cfg.Nodes {
+				if node.ID == recoveredNodeID {
+					nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
+					hashRing.AddNode(recoveredNodeID)
+					hashRing.SetNodeAddress(recoveredNodeID, nodeAddr)
+					fmt.Printf("[CLUSTER] Hash ring updated - node %s added back\n", recoveredNodeID)
+					break
+				}
+			}
+		},
+	)
+
+	nodeState.SetHealthChecker(healthChecker)
+
+	// start health checking
+	healthChecker.Start()
+	fmt.Println("✓ Health checker started")
+	fmt.Println("====================================")
+
 	fmt.Println("✓ Cluster routing enabled (hash ring + config)")
 
 	// create leader
@@ -272,6 +324,46 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	fmt.Println("=============================")
 
 	fmt.Println("✓ Cluster routing enabled (hash ring + config)")
+
+	// create and configure health check
+	fmt.Println("\n=== Initializing Health Checker (follower) ===")
+	healthChecker := cluster.NewHealthChecker(
+		hashRing, 
+		5 * time.Second, // check every 5 sec
+		3, // 3 failures before dead
+		2 * time.Second, // 2 second timeout per ping
+	)
+
+	// get leader nod ID to exclude from health checking
+	leaderNode := cfg.GetHighestPriorityNode()
+
+	// register all nodes from config except leader and self
+	for _, node := range cfg.Nodes {
+		nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
+
+		// skip self and leader
+		if node.ID != cfg.NodeID && node.ID != leaderNode.ID {
+			healthChecker.RegisterNode(node.ID, nodeAddr)
+			fmt.Printf("  ✓ Monitoring node %s at %s\n", node.ID, nodeAddr)
+		}
+	}
+
+	// follower callbacks for node failure/recovery
+	healthChecker.SetCallbacks(
+		func(failedNodeID string) {
+			fmt.Printf("[CLUSTER][FOLLOWER] Detected node %s failure\n", failedNodeID)
+		},
+		func(recoveredNodeID string) {
+			fmt.Printf("[CLUSTER][FOLLOWER] Detected node %s recovery\n", recoveredNodeID)
+		},
+	)
+
+	nodeState.SetHealthChecker(healthChecker)
+
+	// start health checking
+	healthChecker.Start()
+	fmt.Println("✓ Health checker started")
+	fmt.Println("====================================")
 
 	var leaderClientAddr string
 	for _, node := range clusterNodes {
