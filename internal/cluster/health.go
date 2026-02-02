@@ -245,3 +245,59 @@ func (hc *HealthChecker) pingNode(address string) error {
 
 	return fmt.Errorf("invalid response type: %T", response)
 }
+
+// returns true if the node is alive
+func (hc *HealthChecker) IsNodeHealthy(nodeID string) bool {
+	hc.mu.RLock()
+	defer hc.mu.RUnlock()
+
+	health, exists := hc.nodeHealth[nodeID]
+	if !exists {
+		return false
+	}
+
+	return health.Status == NodeStatusAlive
+}
+
+// returns a list of all healthy node IDs
+func (hc *HealthChecker) GetHealthyNodes() []string {
+	hc.mu.RLock()
+	defer hc.mu.RUnlock()
+
+	healthy := []string{}
+	for nodeID, health := range hc.nodeHealth {
+		if health.Status == NodeStatusAlive {
+			healthy = append(healthy, nodeID)
+		}
+	}
+
+	return healthy
+}
+
+// returns the current status of a node
+func (hc *HealthChecker) GetNodeStatus(nodeID string) NodeStatus {
+	hc.mu.RLock()
+	defer hc.mu.RUnlock()
+
+	health, exists := hc.nodeHealth[nodeID]
+	if !exists {
+		return NodeStatusDead
+	}
+
+	return health.Status
+}
+
+// returns a copy of all node health information
+func (hc *HealthChecker) GetAllNodeStatus() map[string]*NodeHealth {
+	hc.mu.RLock()
+	defer hc.mu.RUnlock()
+	
+	statusCopy := make(map[string]*NodeHealth)
+	for nodeID, health := range hc.nodeHealth {
+		// create a copy
+		healthCopy := *health
+		statusCopy[nodeID] = &healthCopy
+	}
+
+	return statusCopy
+}
