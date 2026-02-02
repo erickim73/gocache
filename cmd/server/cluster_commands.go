@@ -31,6 +31,8 @@ func handleClusterCommand(conn net.Conn, command []interface{}, cache *cache.Cac
 		handleClusterNodes(conn, nodeState)
 	case "TOPOLOGY":
 		handleClusterTopology(conn, command, nodeState)
+	case "HEALTH":
+		handleClusterHealth(conn, nodeState)
 	default:
 		conn.Write([]byte(protocol.EncodeError("Unknown CLUSTER subcommand")))
 	}
@@ -265,4 +267,23 @@ func notifyNodeAboutTopologyChange(nodeAddr string, operation string, targetNode
 	reader := bufio.NewReader(conn)
 	_, err = protocol.Parse(reader)
 	return err
+}
+
+func handleClusterHealth(conn net.Conn, nodeState *server.NodeState) {
+	healthChecker := nodeState.GetHealthChecker()
+	if healthChecker == nil {
+		conn.Write([]byte(protocol.EncodeError("Health checker not initialized")))
+		return
+	}
+
+	// get all node health statuses
+	allStatuses := healthChecker.GetAllNodeStatus()
+
+	// build response
+	response := ""
+	for nodeID, health := range allStatuses {
+		response += fmt.Sprintf("%s %s %s\n", nodeID, health.Address, health.Status.String())
+	}
+
+	conn.Write([]byte(protocol.EncodeBulkString(response, false)))
 }
