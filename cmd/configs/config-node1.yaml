@@ -1,5 +1,7 @@
 # node 1 configuration
 node_id: "node1"
+port: 8379
+repl_port: 9379
 
 # cache settings
 max_cache_size: 1000
@@ -9,22 +11,44 @@ sync_policy: "everysecond"
 snapshot_interval_seconds: 300
 growth_factor: 2
 
+shards:
+  - shard_id: "shard1"
+    leader_id: "node1"
+    followers: ["node2"]
+  - shard_id: "shard2"
+    leader_id: "node3"
+    followers: ["node4"]
+
 # cluster topology
 nodes:
   - id: "node1"
     host: "localhost"
     port: 8379         # redis clients connect here
     repl_port: 8479    # other nodes connect here for replication
-    priority: 3        # highest priority = becomes leader first
+    priority: 4        # highest priority = becomes leader first
+    shard_id: "shard1"
+    role: "leader"
 
   - id: "node2"
     host: "localhost"
     port: 8380
     repl_port: 8480
-    priority: 2
+    priority: 3
+    shard_id: "shard1"
+    role: "leader"
 
   - id: "node3"
     host: "localhost"  
     port: 8381
     repl_port: 8481
+    priority: 2
+    shard_id: "shard2"
+    role: "leader"
+    
+  - id: "node4"
+    host: "localhost"  
+    port: 8382
+    repl_port: 9382
     priority: 1
+    shard_id: "shard2"
+    role: "follower"
