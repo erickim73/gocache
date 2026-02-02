@@ -33,6 +33,7 @@ type yamlConfig struct {
 	// cluster fields to YAML parsing
 	NodeID                  string     `yaml:"node_id"`
 	Nodes                   []NodeInfo `yaml:"nodes"`
+	Shards 					[]ShardInfo `yaml:"shards"`
 }
 
 
@@ -110,6 +111,7 @@ func LoadFromFile(fileName string) (*Config, error) {
 		GrowthFactor:     yc.GrowthFactor,
 		NodeID:           yc.NodeID,
 		Nodes:            yc.Nodes,
+		Shards: 		  yc.Shards,
 	}, nil
 }
 

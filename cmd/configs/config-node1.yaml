@@ -11,6 +11,7 @@ sync_policy: "everysecond"
 snapshot_interval_seconds: 300
 growth_factor: 2
 
+# shard info
 shards:
   - shard_id: "shard1"
     leader_id: "node1"
@@ -24,7 +25,7 @@ nodes:
   - id: "node1"
     host: "localhost"
     port: 8379         # redis clients connect here
-    repl_port: 8479    # other nodes connect here for replication
+    repl_port: 9379    # other nodes connect here for replication
     priority: 4        # highest priority = becomes leader first
     shard_id: "shard1"
     role: "leader"
@@ -32,15 +33,15 @@ nodes:
   - id: "node2"
     host: "localhost"
     port: 8380
-    repl_port: 8480
+    repl_port: 9380
     priority: 3
     shard_id: "shard1"
-    role: "leader"
+    role: "follower"
 
   - id: "node3"
     host: "localhost"  
     port: 8381
-    repl_port: 8481
+    repl_port: 9381
     priority: 2
     shard_id: "shard2"
     role: "leader"
