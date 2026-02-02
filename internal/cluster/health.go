@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -55,4 +56,42 @@ type HealthChecker struct {
 	mu sync.RWMutex
 	stopCh chan struct{}
 	wg sync.WaitGroup
+}
+
+// creates a new health checker
+func NewHealthChecker(hashRing *HashRing, checkInterval time.Duration, failureThreshold int, timeout time.Duration) *HealthChecker {
+	return &HealthChecker{
+		nodeHealth: make(map[string] *NodeHealth),
+		checkInterval: checkInterval,
+		failureThreshold: failureThreshold,
+		timeout: timeout,
+		hashRing: hashRing,
+		stopCh: make(chan struct{}),
+	}
+}
+
+// sets the callbacks for node failure/recovery events
+func (hc *HealthChecker) SetCallbacks(onFailed func(string), onRecovered func(string)) {
+	hc.mu.Lock()
+	defer hc.mu.Unlock()
+	hc.onNodeFailed = onFailed
+	hc.onNodeRecovered = onRecovered
+}
+
+// adds a node to the health checker
+func (hc *HealthChecker) RegisterNode(nodeID string, address string) {
+	hc.mu.Lock()
+	defer hc.mu.Unlock()
+
+	_, exists := hc.nodeHealth[nodeID]
+	if ! exists {
+		hc.nodeHealth[nodeID] = &NodeHealth{
+			NodeID: nodeID,
+			Address: address,
+			Status: NodeStatusAlive,
+			LastSuccessfulPing: time.Now(),
+			ConsecutiveSuccesses: 1,
+		}
+		fmt.Printf("[HEALTH] Registered node %s at %s\n", nodeID, address)
+	}
 }
