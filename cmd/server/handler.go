@@ -3,15 +3,16 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"time"
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/persistence"
-	"github.com/erickim73/gocache/pkg/protocol"
 	"github.com/erickim73/gocache/internal/replication"
 	"github.com/erickim73/gocache/internal/server"
+	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 
@@ -41,7 +42,10 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 	for {
 		result, err := protocol.Parse(reader)
 		if err != nil {
-			fmt.Println(err)
+			if err == io.EOF {
+				return
+			}
+			fmt.Printf("Connection error: %v\n", err)
 			return
 		}
 
