@@ -15,6 +15,8 @@ type NodeInfo struct {
 	Port     int    `yaml:"port"`
 	ReplPort int    `yaml:"repl_port"`
 	Priority int    `yaml:"priority"`
+	ShardID  string `yaml:"shard_id"`
+	Role     string `yaml:"role"`
 }
 
 type yamlConfig struct {
@@ -55,6 +57,16 @@ type Config struct {
 	// cluster settings
 	NodeID           string
 	Nodes            []NodeInfo
+
+	// shard settings
+	Shards []ShardInfo `yaml:"shards"` // shard definitions
+}
+
+// defines a replication group
+type ShardInfo struct {
+	ShardID string `yaml:"shard_id"` // e.g., "shard1"
+	LeaderID string `yaml:"leader_id"` // nodeID of leader
+	Followers []string `yaml:"followers"` // node IDs of followers
 }
 
 func DefaultConfig() *Config {
@@ -228,4 +240,54 @@ func (c *Config) AmIHighestPriority() bool {
 
 	highest := c.GetHighestPriorityNode()
 	return highest != nil && highest.ID == myNode.ID
+}
+
+// returns which shard a node belongs to
+func (c *Config) GetShardForNode(nodeID string) (*ShardInfo, error) {
+	for i := range c.Shards {
+		shard := &c.Shards[i]
+		if shard.LeaderID == nodeID {
+			return shard, nil
+		}
+
+		for _, follower := range shard.Followers {
+			if follower == nodeID {
+				return shard, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("node %s not found in any shard", nodeID)
+}
+
+// returns a shard by its id
+func (c *Config) GetShardByID(shardID string) (*ShardInfo, error) {
+	for i := range c.Shards {
+		if c.Shards[i].ShardID == shardID {
+			return &c.Shards[i], nil
+		}
+	}
+	return nil, fmt.Errorf("shard %s not found", shardID)
+}
+
+// checks if this node is a shard leader
+func (c *Config) IsShardLeader() bool {
+	for _, shard := range c.Shards {
+		if shard.LeaderID == c.NodeID {
+			return true
+		}
+	}
+	return false
+}
+
+// returns "leader" or "follower"
+func (c *Config) GetMyShardRole() string {
+	shard, err := c.GetShardForNode(c.NodeID)
+	if err != nil {
+		return ""
+	}
+
+	if shard.LeaderID == c.NodeID {
+		return "leader"
+	}
+	return "follower"
 }
