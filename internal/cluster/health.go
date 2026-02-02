@@ -1,9 +1,13 @@
 package cluster
 
 import (
+	"bufio"
 	"fmt"
+	"net"
 	"sync"
 	"time"
+
+	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 // represents the health state of a node
@@ -150,3 +154,94 @@ func (hc *HealthChecker) checkAllNodes() {
 	}
 }
 
+// pings a single node and updates its health status
+func (hc *HealthChecker) checkNode(node *NodeHealth) {
+	err := hc.pingNode(node.Address)
+
+	hc.mu.Lock()
+	defer hc.mu.Unlock()
+
+	if err != nil {
+		// ping failed
+		node.ConsecutiveFailures++
+		node.ConsecutiveSuccesses = 0
+		node.LastFailedPing = time.Now()
+
+		fmt.Printf("[HEALTH] Ping failed for node %s (%s): %v (failures: %d/%d)\n", node.NodeID, node.Address, err, node.ConsecutiveFailures, hc.failureThreshold)
+
+		// update status based on failure count
+		previousStatus := node.Status
+
+		if node.ConsecutiveFailures >= hc.failureThreshold {
+			node.Status = NodeStatusDead
+		} else if node.ConsecutiveFailures > 0 {
+			node.Status = NodeStatusSuspected
+		}
+
+		// trigger callback on state transition to dead
+		if previousStatus != NodeStatusDead && node.Status == NodeStatusDead {
+			fmt.Printf("[HEALTH] Node %s marked as DEAD after %d failures\n", node.NodeID, node.ConsecutiveFailures)
+			if hc.onNodeFailed != nil {
+				// call callback outside of lock to avoid deadlock
+				go hc.onNodeFailed(node.NodeID)
+			}
+		}
+	} else {
+		// ping succeeded
+		node.ConsecutiveSuccesses++
+		node.ConsecutiveFailures = 0
+		node.LastSuccessfulPing = time.Now()
+
+		previousStatus := node.Status
+		node.Status = NodeStatusAlive
+
+		// trigger callback on recovery
+		if previousStatus == NodeStatusDead {
+			fmt.Printf("[HEALTH] Node %s RECOVERED\n", node.NodeID)
+			if hc.onNodeRecovered != nil {
+				go hc.onNodeRecovered(node.NodeID)
+			}
+		} else if previousStatus == NodeStatusSuspected {
+			fmt.Printf("[HEALTH] Node %s back to healthy\n", node.NodeID)
+		}
+	}
+}
+
+// sends a PING command to a node and expects PONG
+func (hc *HealthChecker) pingNode(address string) error {
+	//connect with timeout
+	conn, err := net.DialTimeout("tcp", address, hc.timeout)
+	if err != nil {
+		return fmt.Errorf("connection failed: %v", err)
+	}
+	defer conn.Close()
+
+	// set deadline for entire operation
+	conn.SetDeadline(time.Now().Add(hc.timeout))
+
+	reader := bufio.NewReader(conn)
+
+	// send PING command
+	cmd := protocol.EncodeArray([]interface{}{"PING"})
+	_, err = conn.Write([]byte(cmd))
+	if err != nil {
+		return fmt.Errorf("write failed: %v", err)
+	}
+
+	// read response
+	response, err := protocol.Parse(reader)
+	if err != nil {
+		return fmt.Errorf("read failed: %v", err)
+	}
+
+	// check for pong
+	str, ok := response.(string)
+	if ok {
+		if str == "PONG" {
+			return nil
+		}
+		return fmt.Errorf("unexpected response: %s", str)
+	}
+
+	return fmt.Errorf("invalid response type: %T", response)
+}
