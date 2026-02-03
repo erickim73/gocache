@@ -33,7 +33,7 @@ func (ns *NodeState) IsClusterMode() bool {
 }
 
 // determine if this node should handle a key. returns (shouldForward, targetNodeID, targetAddress)
-func (ns *NodeState) ShouldForwardRequest(key string) (bool, string, string) {
+func (ns *NodeState) ShouldForwardRequest(key string, isWrite bool) (bool, string, string) {
 	ns.mu.RLock()
 	defer ns.mu.RUnlock()
 
@@ -51,16 +51,50 @@ func (ns *NodeState) ShouldForwardRequest(key string) (bool, string, string) {
 
 	fmt.Printf("[DEBUG] key '%s' → hash ring says: shard '%s'\n", key, responsibleShardID)
 
-	// find leader of that shard
-	leaderNodeID, err := ns.hashRing.GetShardLeader(responsibleShardID)
+	// check if this key belongs to my shard
+	myShard, err := ns.config.GetShardForNode(ns.config.NodeID)
 	if err != nil {
 		return false, "", ""
 	}
 
-	fmt.Printf("[DEBUG] Shard '%s' leader: '%s', my ID: '%s'\n", responsibleShardID, leaderNodeID, ns.config.NodeID)
-	
-	// check if we are the leader
-	if leaderNodeID == ns.config.NodeID {
+	// if key belongs to my shard, i can handle it
+	if responsibleShardID == myShard.ShardID {
+		// key belongs to my shard
+
+		// for reads, followers can serve locally
+		if !isWrite {
+			fmt.Printf("[DEBUG] Read request for key '%s' in my shard %s - handling locally\n", key, myShard.ShardID)
+			return false, "", "" // handle locally (even if follower)
+		}
+
+		// for writes (SET/DEL), must go to shard leader
+		leaderNodeID, err := ns.hashRing.GetShardLeader(responsibleShardID)
+		if err != nil {
+			return false, "", ""
+		}
+
+		if leaderNodeID == ns.config.NodeID {
+			fmt.Printf("[DEBUG] Write request for key '%s' - I am shard leader, handling locally\n", key)
+			return false, "", "" // i'm leader, handle locally
+		}
+
+		// follower, forward write to leader
+		var targetAddr string
+		for _, node := range ns.config.Nodes {
+			if node.ID == leaderNodeID {
+				targetAddr = fmt.Sprintf("%s:%d", node.Host, node.Port)
+				break
+			}
+		}
+
+		fmt.Printf("[DEBUG] Write request for key '%s' - forwarding to shard leader '%s'\n", key, leaderNodeID)
+		return true, leaderNodeID, targetAddr
+	}
+
+
+	// key belongs to different shard, find that shard's leader 
+	leaderNodeID, err := ns.hashRing.GetShardLeader(responsibleShardID)
+	if err != nil {
 		return false, "", ""
 	}
 
@@ -73,13 +107,7 @@ func (ns *NodeState) ShouldForwardRequest(key string) (bool, string, string) {
 		}
 	}
 
-	fmt.Printf("[DEBUG] Forwarding key '%s' to shard leader '%s' at '%s'\n", key, leaderNodeID, targetAddr)
-
-	if targetAddr == "" {
-		// couldn't find node address, handle locally
-		return false, "", ""
-	}
-
+	fmt.Printf("[DEBUG] Key '%s' belongs to different shard %s, forwarding to leader '%s'\n", key, responsibleShardID, leaderNodeID)
 	// forward to another node
 	return true, leaderNodeID, targetAddr
 }

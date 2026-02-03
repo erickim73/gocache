@@ -68,9 +68,12 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 			key = resultSlice[1].(string)
 		}
 
+		// determine if this is a write operation
+		isWrite := (command == "SET" || command == "DEL")
+
 		// check if we should handle this key or forward it
 		if nodeState.IsClusterMode() && key != "" {
-			shouldForward, targetNodeID, targetAddr := nodeState.ShouldForwardRequest(key)
+			shouldForward, targetNodeID, targetAddr := nodeState.ShouldForwardRequest(key, isWrite)
 			if shouldForward {
 				// key belongs to another node - return MOVED
 				msg := fmt.Sprintf("-MOVED %s %s\r\n", targetNodeID, targetAddr)
@@ -79,9 +82,15 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 				continue
 			}
 
-			// key belongs to node, log and continue
-			fmt.Printf("[ROUTING] key '%s' belongs to this node, handling locally\n", key)
+			// key belongs to this node or we can handle reads, log and continue
+			if isWrite {
+				fmt.Printf("[ROUTING] write for key '%s' - handling locally (I'm the leader)\n", key)
+			} else {
+				fmt.Printf("[ROUTING] read for key '%s' - handling locally (replicated data)\n", key)
+			}
 		}
+
+		
 
 		// get current role and leader
 		// role := nodeState.GetRole()
@@ -102,12 +111,14 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 		switch command {
 		case "SET":
 			// handleSet(conn, resultSlice, cache, aof, leader)
-			handleSet(conn, resultSlice, cache, aof, nil)
+			leader := nodeState.GetLeader()
+			handleSet(conn, resultSlice, cache, aof, leader)
 		case "GET":
 			handleGet(conn, resultSlice, cache)
 		case "DEL":
 			// handleDelete(conn, resultSlice, cache, aof, leader)
-			handleDelete(conn, resultSlice, cache, aof, nil)
+			leader := nodeState.GetLeader()
+			handleDelete(conn, resultSlice, cache, aof, leader)
 		case "DBSIZE":
 			handleDBSize(conn, cache)
 		case "PING":
