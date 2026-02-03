@@ -175,3 +175,85 @@ func (c *ClusterClient) buildHashRing() {
 
 	fmt.Printf("[CLUSTER CLIENT] Hash ring built with %d active nodes\n", c.hashRing.GetNodeCount())
 }
+
+// retrieves a value from the cluster
+func (c *ClusterClient) Get(key string) (string, error) {
+	// find which node owns this key
+	c.mu.RLock()
+	nodeID, err := c.hashRing.GetNode(key)
+	c.mu.RUnlock()
+
+	if err != nil {
+		return "", fmt.Errorf("failed to find node for key %s: %v", key, err)
+	}
+
+	// look up the network address for this node
+	c.mu.RLock()
+	address := c.hashRing.GetNodeAddress(nodeID)
+	c.mu.RUnlock()
+
+	if address == "" {
+		return "", fmt.Errorf("no address found for node %s", nodeID)
+	}
+
+	fmt.Printf("[CLUSTER CLIENT] Routing GET(%s) to node %s at %s\n", key, nodeID, address)
+
+	// get a connection to that node
+	conn, err := c.getOrCreateConnection(address)
+	if err != nil {
+		return "", err
+	}
+
+	// send the GET command to that node using existing client
+	result, err := conn.Get(key)
+	if err != nil {
+		// handle MOVED responses - means cluster topology changed
+		if strings.HasPrefix(err.Error(), "MOVED") {
+			fmt.Printf("[CLUSTER CLIENT] Received MOVED response, refreshing topology\n")
+			
+			// refresh our view of the cluster
+			refreshErr := c.discoverTopology()
+			if refreshErr != nil {
+				return "", fmt.Errorf("failed to refresh topology: %v", refreshErr)
+			}
+
+			// retry request with updated topology
+			return c.Get(key)
+		}
+		return "", err
+	}
+	return result, nil
+}
+
+// gets an existing connection or creates a new one
+func (c *ClusterClient) getOrCreateConnection(address string) (*Client, error) {
+	// check if we already have a connection
+	c.mu.RLock()
+	conn, exists := c.conns[address]
+	if exists {
+		c.mu.RUnlock()
+		return conn, nil
+	}
+	c.mu.RUnlock()
+
+	// no existing connection, acquire write lock to create one
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// double-check after acquiring write lock
+	if conn, exists := c.conns[address]; exists {
+		return conn, nil
+	}
+
+	// create new connection to node
+	fmt.Printf("[CLUSTER CLIENT] Creating new connection to %s\n", address)
+	conn, err := NewClient(address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to %s: %v", address, err)
+	}
+
+	// store connection in map for reuse
+	c.conns[address] = conn
+	return conn, nil
+}
+
