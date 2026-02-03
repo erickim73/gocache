@@ -168,10 +168,17 @@ func startClusterMode(cfg *config.Config) {
 	hashRing := cluster.NewHashRing(150)
 
 	// add all cluster nodes to hash ring
-	for _, node := range cfg.Nodes {
-		hashRing.AddNode(node.ID)
-		fmt.Printf("  ✓ Added node to hash ring: %s\n", node.ID)
+	for _, shard := range cfg.Shards {
+		hashRing.AddShard(shard.ShardID)
+		fmt.Printf("  ✓ Added shard to hash ring: %s\n", shard.ShardID)
+
+		// map shard to its nodes [leader, follower1, follower2...]
+		nodes := []string{shard.LeaderID}
+		nodes = append(nodes, shard.Followers...)
+		hashRing.SetShardNodes(shard.ShardID, nodes)
+		fmt.Printf("    Shard %s nodes: %v\n", shard.ShardID, nodes)
 	}
+
 	fmt.Printf("✓ Hash ring initialized with %d nodes\n", len(cfg.Nodes))
 	fmt.Printf("  Each node has 150 virtual nodes for balanced distribution\n")
 	fmt.Println("==========================================")
@@ -259,7 +266,7 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 			for _, node := range cfg.Nodes {
 				if node.ID == recoveredNodeID {
 					nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
-					hashRing.AddNode(recoveredNodeID)
+					hashRing.AddShard(recoveredNodeID)
 					hashRing.SetNodeAddress(recoveredNodeID, nodeAddr)
 					fmt.Printf("[CLUSTER] Hash ring updated - node %s added back\n", recoveredNodeID)
 				}
@@ -287,6 +294,16 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 	nodeState.SetLeader(leader)
 
 	go leader.Start()
+
+	fmt.Println("\n=== Setting Up Shard Replication ===")
+	myShard, err := cfg.GetShardForNode(cfg.NodeID)
+	if err == nil && myShard.LeaderID == cfg.NodeID {
+		fmt.Printf("I am leader of shard %s\n", myShard.ShardID)
+		fmt.Printf("Waiting for followers: %v\n", myShard.Followers)
+	} else if err != nil {
+		fmt.Printf("Warning: Could not determine my shard: %v\n", err)
+	}
+	fmt.Println("===================================")
 
 	// start client listener
 	startClientListener(myNode.Port, myCache, aof, nodeState)
@@ -364,12 +381,42 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	fmt.Println("✓ Health checker started")
 	fmt.Println("====================================")
 
+	fmt.Println("\n=== Setting Up Shard Replication ===")
+	myShard, err := cfg.GetShardForNode(cfg.NodeID)
+	if err != nil {
+		fmt.Printf("Error finding my shard: %v\n", err)
+	} else {
+		fmt.Printf("I am follower in shard %s\n", myShard.ShardID)
+		fmt.Printf("My shard leader: %s\n", myShard.LeaderID)
+	}
+
+	// find my shard leader's replication address
+	var shardLeaderReplAddr string
+	if myShard != nil {
+		for _, node := range cfg.Nodes {
+			if node.ID == myShard.LeaderID {
+				shardLeaderReplAddr = fmt.Sprintf("%s:%d", node.Host, node.ReplPort)
+				break
+			}
+		}
+	}
+
+	if shardLeaderReplAddr == "" {
+		fmt.Printf("Warning: Could not find shard leader replication address, using default\n")
+		shardLeaderReplAddr = leaderAddr // fallback
+	}
+
+	fmt.Printf("Connecting to shard leader at %s\n", shardLeaderReplAddr)
+	fmt.Println("===========================")
+
+	// find leader's client address for forwarding
 	var leaderClientAddr string
-	for _, node := range clusterNodes {
-		// find leader node
-		if node.Priority == getHighestPriority(clusterNodes) {
-			leaderClientAddr = fmt.Sprintf("%s:%d", node.Host, node.Port)
-			break
+	if myShard != nil {
+		for _, node := range cfg.Nodes {
+			if node.ID == myShard.LeaderID {
+				leaderClientAddr = fmt.Sprintf("%s:%d", node.Host, node.Port)
+				break
+			}
 		}
 	}
 
@@ -447,7 +494,7 @@ func startPendingNode(cfg *config.Config) {
 
 	// add nodes from config
 	for _, node := range cfg.Nodes {
-		hashRing.AddNode(node.ID)
+		hashRing.AddShard(node.ID)
 		nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
 		hashRing.SetNodeAddress(node.ID, nodeAddr)
 		fmt.Printf("  ✓ Added node: %s at %s\n", node.ID, nodeAddr)
