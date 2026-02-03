@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/erickim73/gocache/internal/cluster"
@@ -99,3 +100,52 @@ func (c *ClusterClient) discoverTopology() error {
 	// if all seeds fail, return the last error encountered
 	return fmt.Errorf("failed to discover topology from any seed: %v", lastErr)
 }
+
+// parses the response from CLUSTER NODES command
+// expected format from server: "nodeID address status\nnodeID address status\n..."
+func (c *ClusterClient) parseClusterNodes(response string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// clear existing node information before parsing new data
+	c.nodes = make(map[string]NodeInfo)
+
+	// split response into lines, one per node
+	lines := strings.Split(strings.TrimSpace(response), "\n")
+	if len(lines) == 0 {
+		return fmt.Errorf("empty CLUSTER NODES response")
+	}
+
+	// parse each line into a NodeInfo structure
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue // skip empty lines
+		}
+
+		// expected format: nodeID address status"
+		parts := strings.Fields(line)
+		if len(parts) < 3 {
+			fmt.Printf("[CLUSTER CLIENT] Warning: skipping malformed line: %s\n", line)
+			continue
+		}
+
+		// extract node information from parsed fields
+		nodeInfo := NodeInfo{
+			ID: parts[0],
+			Address: parts[1],
+			Status: parts[2],
+		}
+
+		// store node info 
+		c.nodes[nodeInfo.ID] = nodeInfo
+		fmt.Printf("[CLUSTER CLIENT] Discovered node: %s at %s (%s)\n", nodeInfo.ID, nodeInfo.Address, nodeInfo.Status)
+	}
+
+	if len(c.nodes) == 0 {
+		return fmt.Errorf("no valid nodes found in CLUSTER NODES response")
+	}
+
+	return nil
+}
+
