@@ -149,3 +149,29 @@ func (c *ClusterClient) parseClusterNodes(response string) error {
 	return nil
 }
 
+// constructs the hash ring from discovered nodes
+func (c *ClusterClient) buildHashRing() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	fmt.Printf("[CLUSTER CLIENT] Building hash ring with %d nodes\n", len(c.nodes))
+
+	// add each node to the hash ring
+	for nodeID, nodeInfo := range c.nodes {
+		// only add active nodes to hash ring
+		if nodeInfo.Status != "active" {
+			fmt.Printf("[CLUSTER CLIENT] Skipping non-active node %s (%s)\n", nodeID, nodeInfo.Status)
+			continue
+		}
+
+		// add node to hash ring as a shard
+		c.hashRing.AddShard(nodeID)
+
+		// store the node's network address in the hash ring
+		c.hashRing.SetNodeAddress(nodeID, nodeInfo.Address)
+
+		fmt.Printf("[CLUSTER CLIENT] Added node %s to hash ring at address %s\n", nodeID, nodeInfo.Address)
+	}
+
+	fmt.Printf("[CLUSTER CLIENT] Hash ring built with %d active nodes\n", c.hashRing.GetNodeCount())
+}
