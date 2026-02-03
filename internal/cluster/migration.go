@@ -49,7 +49,7 @@ func (hr *HashRing) CalculateMigrations(newNodeID string) []MigrationTask {
 		}
 
 		// look up which physical node owns this hash value
-		prevNode = hr.hashToNode[prevHash]
+		prevNode = hr.hashToShard[prevHash]
 
 		// create a migration task if we're taking from a different node
 		if prevNode != newNodeID {
@@ -99,7 +99,7 @@ func (hr *HashRing) CalculateMigrationsForRemoval(removeNodeID string) []Migrati
 		// the next node is the one immediately after this one
 		nextIdx := (idx + 1) % len(hr.hashValues)
 		nextHash = hr.hashValues[nextIdx]
-		nextNode = hr.hashToNode[nextHash]
+		nextNode = hr.hashToShard[nextHash]
 
 		// create task if next node is different from current node
 		if nextNode != removeNodeID {

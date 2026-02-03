@@ -17,7 +17,7 @@ func TestHashRing_BasicOperations(t *testing.T) {
 	}
 
 	// test 2: add a node
-	ring.AddNode("node1")
+	ring.AddShard("node1")
 
 	node, err := ring.GetNode("key1")
 	if err != nil {
@@ -28,8 +28,8 @@ func TestHashRing_BasicOperations(t *testing.T) {
 	}
 
 	// test 3: add more nodes
-	ring.AddNode("node2")
-	ring.AddNode("node3")
+	ring.AddShard("node2")
+	ring.AddShard("node3")
 
 	// all keys should map to one of the three nodes
 	for i := 0; i < 10; i++ {
@@ -46,9 +46,9 @@ func TestHashRing_BasicOperations(t *testing.T) {
 
 func TestHashRing_RemoveNode(t *testing.T) {
 	ring := NewHashRing(3)
-	ring.AddNode("node1")
-	ring.AddNode("node2")
-	ring.AddNode("node3")
+	ring.AddShard("node1")
+	ring.AddShard("node2")
+	ring.AddShard("node3")
 
 	// remove node2
 	ring.RemoveNode("node2")
@@ -68,9 +68,9 @@ func TestHashRing_RemoveNode(t *testing.T) {
 
 func TestHashRing_Distribution(t *testing.T) {
 	ring := NewHashRing(150) // more virtual nodes for better distribution
-	ring.AddNode("node1")
-	ring.AddNode("node2")
-	ring.AddNode("node3")
+	ring.AddShard("node1")
+	ring.AddShard("node2")
+	ring.AddShard("node3")
 
 	// count how many keys go to each node
 	distribution := make(map[string]int)
@@ -109,9 +109,9 @@ func TestHashRing_Distribution(t *testing.T) {
 func TestHashRing_ConsistentHashing(t *testing.T) {
 	// test that adding a node only moves a small portion of keys
 	ring := NewHashRing(150)
-	ring.AddNode("node1")
-	ring.AddNode("node2")
-	ring.AddNode("node3")
+	ring.AddShard("node1")
+	ring.AddShard("node2")
+	ring.AddShard("node3")
 
 	// record where keys map before adding node4
 	keyMapping := make(map[string]string)
@@ -124,7 +124,7 @@ func TestHashRing_ConsistentHashing(t *testing.T) {
 	}
 
 	// add node4
-	ring.AddNode("node4")
+	ring.AddShard("node4")
 
 	// count how many keys moved
 	moved := 0
@@ -149,8 +149,8 @@ func TestHashRing_ConsistentHashing(t *testing.T) {
 func TestHashRing_Concurrent(t *testing.T) {
 	// test thread safety
 	ring := NewHashRing(150)
-	ring.AddNode("node1")
-	ring.AddNode("node2")
+	ring.AddShard("node1")
+	ring.AddShard("node2")
 
 	var wg sync.WaitGroup
 
@@ -175,7 +175,7 @@ func TestHashRing_Concurrent(t *testing.T) {
 		go func(id int) {
 			defer wg.Done() 
 			nodeID := fmt.Sprintf("concurrent-node-%d", id)
-			ring.AddNode(nodeID)
+			ring.AddShard(nodeID)
 		}(i)
 	}
 

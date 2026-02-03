@@ -42,14 +42,14 @@ func (m *Migrator) MigrateToNewNode(newNodeID string, newNodeAddr string) error 
 
 	// add node to hash ring
 	fmt.Printf("[MIGRATION] Adding %s to hash ring with address %s\n", newNodeID, newNodeAddr)
-	m.hashRing.AddNode(newNodeID)
+	m.hashRing.AddShard(newNodeID)
 	m.hashRing.SetNodeAddress(newNodeID, newNodeAddr)
 
 
 	if len(tasks) == 0 {
 		fmt.Printf("[MIGRATION] No keys to migrate\n")
 		// add node to ring even if no data to migrate
-		m.hashRing.AddNode(newNodeID)
+		m.hashRing.AddShard(newNodeID)
 		m.hashRing.SetNodeAddress(newNodeID, newNodeAddr)
 		return nil
 	}

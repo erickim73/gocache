@@ -11,9 +11,9 @@ import (
 func TestMigrationCalculation(t *testing.T) {
 	hr := NewHashRing(10)
 
-	hr.AddNode("node1")
-	hr.AddNode("node2")
-	hr.AddNode("node3")
+	hr.AddShard("node1")
+	hr.AddShard("node2")
+	hr.AddShard("node3")
 
 	// calculate migrations for a new 4th node
 	tasks := hr.CalculateMigrations("node4")
@@ -145,9 +145,9 @@ func TestFullMigrationFlow(t *testing.T) {
 	hr := NewHashRing(10)
 
 	// add initial nodes
-	hr.AddNode("node1")
-	hr.AddNode("node2")
-	hr.AddNode("node3")
+	hr.AddShard("node1")
+	hr.AddShard("node2")
+	hr.AddShard("node3")
 
 	// add test data
 	for i := 0; i < 100; i++ {

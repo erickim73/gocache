@@ -42,31 +42,38 @@ func (ns *NodeState) ShouldForwardRequest(key string) (bool, string, string) {
 		return false, "", ""
 	}
 
-	// ask hash ring which node owns this key
-	responsibleNodeID, err := ns.hashRing.GetNode(key)
+	// ask hash ring which shard owns this key
+	responsibleShardID, err := ns.hashRing.GetShard(key)
 	if err != nil {
 		// handle locally if hash ring fails
 		return false, "", ""
 	}
 
-	fmt.Printf("[DEBUG] key '%s' → hash ring says: '%s', my ID: '%s'\n", key, responsibleNodeID, ns.config.NodeID)
+	fmt.Printf("[DEBUG] key '%s' → hash ring says: shard '%s'\n", key, responsibleShardID)
 
-	// check if we're the responsible node
-	if responsibleNodeID == ns.config.NodeID {
-		// node owns this key, handle locally
+	// find leader of that shard
+	leaderNodeID, err := ns.hashRing.GetShardLeader(responsibleShardID)
+	if err != nil {
 		return false, "", ""
 	}
 
-	// find target node's address from cluster config
+	fmt.Printf("[DEBUG] Shard '%s' leader: '%s', my ID: '%s'\n", responsibleShardID, leaderNodeID, ns.config.NodeID)
+	
+	// check if we are the leader
+	if leaderNodeID == ns.config.NodeID {
+		return false, "", ""
+	}
+
+	// find leader node's address from cluster config
 	var targetAddr string
 	for _, node := range ns.config.Nodes {
-		if node.ID == responsibleNodeID {
+		if node.ID == leaderNodeID {
 			targetAddr = fmt.Sprintf("%s:%d", node.Host, node.Port)
 			break
 		}
 	}
 
-	fmt.Printf("[DEBUG] Forwarding key '%s' to nodeID='%s', addr='%s'\n", key, responsibleNodeID, targetAddr)
+	fmt.Printf("[DEBUG] Forwarding key '%s' to shard leader '%s' at '%s'\n", key, leaderNodeID, targetAddr)
 
 	if targetAddr == "" {
 		// couldn't find node address, handle locally
@@ -74,7 +81,7 @@ func (ns *NodeState) ShouldForwardRequest(key string) (bool, string, string) {
 	}
 
 	// forward to another node
-	return true, responsibleNodeID, targetAddr
+	return true, leaderNodeID, targetAddr
 }
 
 // set hash ring for cluster routing
