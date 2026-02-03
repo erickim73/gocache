@@ -1,6 +1,7 @@
 package client
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/erickim73/gocache/internal/cluster"
@@ -22,4 +23,31 @@ type ClusterClient struct {
 	mu sync.RWMutex // protects concurrent access to hashRing, conns, and nodes maps
 	stopCh chan struct{} // channel to signal topology refresh goroutine to stop
 	refreshWg sync.WaitGroup // WaitGroup to track topology refresh goroutine
+}
+
+// creates a new cluster-aware client. takes a list of seed addresses to bootstrap cluster discovery
+func NewClusterClient(seeds []string) (*ClusterClient, error) {
+	// validate input
+	if len(seeds) == 0 {
+		return nil, fmt.Errorf("at least one seed address is required")
+	}
+
+	// initialize the cluster client with empty state
+	c := &ClusterClient{
+		seeds: seeds,
+		hashRing: cluster.NewHashRing(150),
+		conns: make(map[string]*Client), // start with no connections, create them lazily
+		nodes: make(map[string]NodeInfo),
+		stopCh: make(chan struct{}),
+	}
+	
+	// immediately discover topology on initialization
+	fmt.Printf("[CLUSTER CLIENT] Discovering cluster topology from seeds: %v\n", seeds)
+	err := c.discoverTopology()
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover cluster topology: %v", err)
+	}
+
+	fmt.Printf("[CLUSTER CLIENT] Successfully initialized with %d nodes\n", len(c.nodes))
+	return c, nil
 }
