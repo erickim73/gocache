@@ -185,16 +185,35 @@ func startClusterMode(cfg *config.Config) {
 
 	// determine initial role based on priority
 	// highest priority node starts as leader
-	if cfg.AmIHighestPriority() {
+	if cfg.IsShardLeader() {
 		fmt.Printf("\n I have highest priority - starting as leader\n\n")
 		startAsLeader(myNode, myCache, aof, cfg, hashRing)
 	} else {
-		fmt.Printf("\n Not highest priority - starting as follower")
+		fmt.Printf("\n I am a shared follower - starting as follower")
 
-		// find the leader
-		leaderNode := cfg.GetHighestPriorityNode()
+		// find shard's leader
+		myShard, err := cfg.GetShardForNode(cfg.NodeID)
+		if err != nil {
+			fmt.Printf("Error: Cannot find my shard: %v\n", err)
+			return
+		}
+
+		// find the leader node info
+		var leaderNode *config.NodeInfo
+		for i := range cfg.Nodes {
+			if cfg.Nodes[i].ID == myShard.LeaderID {
+				leaderNode = &cfg.Nodes[i]
+				break
+			}
+		}
+
+		if leaderNode == nil {
+			fmt.Printf("Error: Cannot find shard leader node info\n")
+			return
+		}
+
 		leaderAddr := fmt.Sprintf("%s:%d", leaderNode.Host, leaderNode.ReplPort)
-		fmt.Printf("Connecting to leader %s at: %s\n\n", leaderNode.ID, leaderAddr)
+		fmt.Printf("Connecting to shard leader %s at: %s\n\n", leaderNode.ID, leaderAddr)
 
 		startAsFollower(myNode, myCache, aof, leaderAddr, cfg.Nodes, cfg, hashRing)
 	}
@@ -255,7 +274,7 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 	healthChecker.SetCallbacks(
 		func(failedNodeID string) {
 			fmt.Printf("[CLUSTER] Node %s failed! Removing from hash ring...\n", failedNodeID)
-			hashRing.RemoveNode(failedNodeID)
+			hashRing.RemoveShard(failedNodeID)
 			hashRing.SetNodeAddress(failedNodeID, "")
 			fmt.Printf("[CLUSTER] Hash ring updated - node %s removed\n", failedNodeID)
 		},
@@ -423,7 +442,7 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	nodeState.SetLeaderAddr(leaderClientAddr)
 	
 	// create follower
-	follower, err := replication.NewFollower(myCache, aof, leaderAddr, myNode.ID, clusterNodes, myNode.Priority, myNode.ReplPort, nodeState) 
+	follower, err := replication.NewFollower(myCache, aof, shardLeaderReplAddr, myNode.ID, clusterNodes, myNode.Priority, myNode.ReplPort, nodeState) 
 	if err != nil {
 		fmt.Printf("error creating follower: %v\n", err)
 		return

@@ -51,7 +51,7 @@ func TestHashRing_RemoveNode(t *testing.T) {
 	ring.AddShard("node3")
 
 	// remove node2
-	ring.RemoveNode("node2")
+	ring.RemoveShard("node2")
 
 	// check that keys no longer map to node2
 	for i := 0; i < 100; i++ {
@@ -185,7 +185,7 @@ func TestHashRing_Concurrent(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			nodeID := fmt.Sprintf("concurrent-node-%d", id)
-			ring.RemoveNode(nodeID)
+			ring.RemoveShard(nodeID)
 		}(i)
 	}
 

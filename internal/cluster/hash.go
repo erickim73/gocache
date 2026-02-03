@@ -69,8 +69,8 @@ func (hr *HashRing) AddShard(shardID string) {
 
 }
 
-// removes a physical node and all its virtual nodes from the ring
-func (hr *HashRing) RemoveNode(shardID string) {
+// removes a shard and all its virtual nodes from the ring
+func (hr *HashRing) RemoveShard(shardID string) {
 	hr.mu.Lock()
 	defer hr.mu.Unlock()
 
@@ -90,6 +90,8 @@ func (hr *HashRing) RemoveNode(shardID string) {
 			}
 		}
 	}
+
+	fmt.Printf("[HASH RING] Removed shard %s\n", shardID)
 }
 
 // returns the node responsible for the given key

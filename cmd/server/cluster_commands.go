@@ -59,7 +59,7 @@ func handleClusterTopology(conn net.Conn, command []interface{}, nodeState *serv
 		fmt.Printf("[CLUSTER] Updated local hash ring\n")
 	case "REMOVE":
 		fmt.Printf("[CLUSTER] Received topology update: REMOVE %s\n", targetNodeID)
-		hashRing.RemoveNode(targetNodeID)
+		hashRing.RemoveShard(targetNodeID)
 		hashRing.SetNodeAddress(targetNodeID, "")
 		fmt.Printf("[CLUSTER] Updated local hash ring\n")
 	default:

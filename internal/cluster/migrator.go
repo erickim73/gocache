@@ -124,7 +124,7 @@ func (m *Migrator) MigrateFromLeavingNode(leavingNodeID string) error {
 
 	if len(tasks) == 0 {
 		fmt.Printf("[MIGRATION] No keys to migrate\n")
-		m.hashRing.RemoveNode(leavingNodeID)
+		m.hashRing.RemoveShard(leavingNodeID)
 		m.hashRing.SetNodeAddress(leavingNodeID, "")
 		return nil
 	}
@@ -179,7 +179,7 @@ func (m *Migrator) MigrateFromLeavingNode(leavingNodeID string) error {
 
 	// remove node from hash ring
 	fmt.Printf("[MIGRATION] Removing %s from hash ring\n", leavingNodeID)
-	m.hashRing.RemoveNode(leavingNodeID)
+	m.hashRing.RemoveShard(leavingNodeID)
 
 	fmt.Printf("[MIGRATION] Removal complete: %d total keys migrated away from %s\n", totalKeysMigrated, leavingNodeID)
 
