@@ -228,21 +228,31 @@ func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.
 
 // lists all nodes in the cluster with their status
 func handleClusterNodes(conn net.Conn, nodeState *server.NodeState) {
-	// get hash ring to access node information
-	hashRing := nodeState.GetHashRing()
-	if hashRing == nil {
+	// get config to access individual node information
+	config := nodeState.GetConfig()
+	if config == nil {
 		conn.Write([]byte(protocol.EncodeError("Cluster is not initialized")))
 		return
 	}
 
-	// get list of all node IDs
-	nodes := hashRing.GetAllNodes()
+	// get health checker to determine node status
+	healthChecker := nodeState.GetHealthChecker()
 
 	// build response string with node information
 	response := ""
-	for _, nodeID := range nodes {
-		addr := hashRing.GetNodeAddress(nodeID)
-		response += fmt.Sprintf("%s %s active\n", nodeID, addr)
+	for _, node := range config.Nodes {
+		// build full address 
+		nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
+
+		// determine node status from health checker 
+		status := "active"
+		if healthChecker != nil {
+			nodeStatus := healthChecker.GetNodeStatus(node.ID)
+			status = nodeStatus.String() // "alive", "suspected", or "dead"
+		}
+
+		// return individual node information in format: "nodeID address status"
+		response += fmt.Sprintf("%s %s %s\n", node.ID, nodeAddr, status)
 	}
 
 	conn.Write([]byte(protocol.EncodeBulkString(response, false)))
