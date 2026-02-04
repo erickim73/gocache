@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/erickim73/gocache/pkg/protocol"
 )
@@ -19,6 +20,7 @@ type Client struct {
 	conn   net.Conn
 	reader *bufio.Reader
 	writer *bufio.Writer
+	mu sync.Mutex
 }
 
 // creates a new client connection
@@ -181,6 +183,48 @@ func (c *Client) Delete(key string) error {
 	}
 
 	return nil
+}
+
+// sends a generic command to the server and returns the response
+func (c *Client) SendCommand(args ...string) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// build RESP array with command arguments
+	interfaceArgs := make([]interface{}, len(args))
+	for i, arg := range args {
+		interfaceArgs[i] = arg
+	}
+
+	// encode and send the command
+	cmd := protocol.EncodeArray(interfaceArgs)
+
+	_, err := c.writer.WriteString(cmd)
+	if err != nil {
+		return "", fmt.Errorf("failed to write command: %v", err)
+	}
+
+	// flush the writer to ensure data is sent
+	err = c.writer.Flush()
+	if err != nil {
+		return "", fmt.Errorf("failed to flush: %v", err)
+	}
+
+	// read the response
+	response, err := protocol.Parse(c.reader)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %v", err) 
+	}
+
+	// handle different response types
+	switch v := response.(type) {
+	case string: 
+		return v, nil
+	case error:
+		return "", v
+	default:
+		return fmt.Sprintf("%v", v), nil
+	}
 }
 
 func main() {

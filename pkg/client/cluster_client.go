@@ -75,7 +75,7 @@ func (c *ClusterClient) discoverTopology() error {
 		response, err := seedClient.SendCommand("CLUSTER", "NODES")
 		if err != nil {
 			seedClient.Close()
-			lastErr = fmt.Errorf("CLUSTER NODES command failed on %s: %v")
+			lastErr = fmt.Errorf("CLUSTER NODES command failed on %s: %v", seedAddr, err)
 			fmt.Printf("[CLUSTER CLIENT] %v\n", lastErr)
 			continue // try next seed
 		}
@@ -335,7 +335,8 @@ func (c *ClusterClient) SetWithTTL(key string, value string, ttl time.Duration) 
 		return err
 	}
 
-	err = conn.SetWithTTL(key, value, ttl)
+	ttlSeconds := int(ttl.Seconds())
+	err = conn.SetWithTTL(key, value, ttlSeconds)
 	if err != nil {
 		// handle MOVED responses by refreshing topology and refreshing
 		if strings.HasPrefix(err.Error(), "MOVED") {
