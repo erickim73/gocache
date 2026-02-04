@@ -354,3 +354,51 @@ func (c *ClusterClient) SetWithTTL(key string, value string, ttl time.Duration) 
 	
 	return nil
 }
+
+// removes a key from the cluster
+func (c *ClusterClient) Delete(key string) error {
+	// find which node owns this key
+	c.mu.RLock()
+	nodeID, err := c.hashRing.GetNode(key)
+	c.mu.RUnlock()
+
+	if err != nil {
+		return fmt.Errorf("failed to find node for key %s: %v", key, err)
+	}
+
+	// look up the network address for this node
+	c.mu.RLock()
+	address := c.hashRing.GetNodeAddress(nodeID)
+	c.mu.RUnlock()
+
+	if address == "" {
+		return fmt.Errorf("no address found for node %s", nodeID)
+	}
+
+	fmt.Printf("[CLUSTER CLIENT] Routing DEL(%s) to node %s at %s\n", key, nodeID, address)
+	
+	// get or create a connection to the target node
+	conn, err := c.getOrCreateConnection(address)
+	if err != nil {
+		return err
+	}
+
+	err = conn.Delete(key)
+	if err != nil {
+		// handle MOVED responses by refreshing topology and refreshing
+		if strings.HasPrefix(err.Error(), "MOVED") {
+			fmt.Printf("[CLUSTER CLIENT] Received MOVED response, refreshing topology\n")
+
+			refreshErr := c.discoverTopology()
+			if refreshErr != nil {
+				return fmt.Errorf("failed to refresh topology: %v", refreshErr)
+			}
+
+			// retry request with updated topology
+			return c.Delete(key)
+		}
+		return err
+	}
+
+	return nil
+}
