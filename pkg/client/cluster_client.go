@@ -435,3 +435,47 @@ func (c *ClusterClient) StartTopologyRefresh(interval time.Duration) {
 		}
 	}()
 }
+
+// closes all connections and stops background tasks
+func (c *ClusterClient) Close() error {
+	// signal the topology refresh goroutine to stop
+	close(c.stopCh)
+
+	// wait for goroutine to finish
+	c.refreshWg.Wait()
+
+	// close all connections
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	fmt.Printf("[CLUSTER CLIENT] Closing all connections\n")
+	for address, conn := range c.conns {
+		fmt.Printf("[CLUSTER CLIENT] Closing connection to %s\n", address)
+		conn.Close()
+	}
+
+	// clear connections map
+	c.conns = make(map[string]*Client)
+
+	return nil
+}
+
+// manually refreshes cluster topology
+func (c *ClusterClient) RefreshTopology() error {
+	fmt.Printf("[CLUSTER CLIENT] Manually refreshing cluster topology\n")
+	return c.discoverTopology()
+}
+
+// returns information about all nodes in the cluster
+func (c *ClusterClient) GetNodes() []NodeInfo {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// create copy of nodes map to return
+	nodes := make([]NodeInfo, 0, len(c.nodes))
+	for _, node := range c.nodes {
+		nodes = append(nodes, node)
+	}
+
+	return nodes
+}
