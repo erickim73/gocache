@@ -402,3 +402,36 @@ func (c *ClusterClient) Delete(key string) error {
 
 	return nil
 }
+
+// starts a background goroutine to refresh cluster topology
+func (c *ClusterClient) StartTopologyRefresh(interval time.Duration) {
+	c.refreshWg.Add(1)
+	go func() {
+		defer c.refreshWg.Done()
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		fmt.Printf("[CLUSTER CLIENT] Started topology refresh (interval: %v)\n", interval)
+
+		for {
+			select {
+			case <- ticker.C:
+				// periodically refresh topology
+				fmt.Printf("[CLUSTER CLIENT] Refreshing topology...\n")
+				err := c.discoverTopology()
+				if err != nil {
+					// log error but don't crash
+					fmt.Printf("[CLUSTER CLIENT] Topology refresh failed: %v\n", err)
+				} else {
+					fmt.Printf("[CLUSTER CLIENT] Topology refresh successful\n")
+				}
+
+			case <-c.stopCh:
+				// stop signal received
+				fmt.Printf("[CLUSTER CLIENT] Stopping topology refresh\n")
+				return
+			}
+		}
+	}()
+}
