@@ -47,6 +47,9 @@ func (c *Client) Close() error {
 
 // send a command and handle redirects automatically
 func (c *Client) executeCommandWithRedirect(command []interface{}) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	
 	redirectCount := 0
 
 	for redirectCount < MaxRedirects {
