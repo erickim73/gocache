@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/erickim73/gocache/internal/cluster"
 )
@@ -257,3 +258,99 @@ func (c *ClusterClient) getOrCreateConnection(address string) (*Client, error) {
 	return conn, nil
 }
 
+// stores a value in the cluster
+func (c *ClusterClient) Set(key string, value string) error {
+	// find which node owns this key
+	c.mu.RLock()
+	nodeID, err := c.hashRing.GetNode(key)
+	c.mu.RUnlock()
+
+	if err != nil {
+		return fmt.Errorf("failed to find node for key %s: %v", key, err)
+	}
+
+	// look up the network address for this node
+	c.mu.RLock()
+	address := c.hashRing.GetNodeAddress(nodeID)
+	c.mu.RUnlock()
+
+	if address == "" {
+		return fmt.Errorf("no address found for node %s", nodeID)
+	}
+
+	fmt.Printf("[CLUSTER CLIENT] Routing SET(%s) to node %s at %s\n", key, nodeID, address)
+
+	// get or create a connection to the target node
+	conn, err := c.getOrCreateConnection(address)
+	if err != nil {
+		return err
+	}
+
+	// execute set command on the target node
+	err = conn.Set(key, value)
+	if err != nil {
+		// handle MOVED responses by refreshing topology and refreshing
+		if strings.HasPrefix(err.Error(), "MOVED") {
+			fmt.Printf("[CLUSTER CLIENT] Received MOVED response, refreshing topology\n")
+
+			refreshErr := c.discoverTopology()
+			if refreshErr != nil {
+				return fmt.Errorf("failed to refresh topology: %v", refreshErr)
+			}
+
+			// retry request with updated topology
+			return c.Set(key, value)
+		}
+		return err
+	}
+	
+	return nil
+}
+
+// stores a key-value pair with an expiration time
+func (c *ClusterClient) SetWithTTL(key string, value string, ttl time.Duration) error {
+	// find which node owns this key
+	c.mu.RLock()
+	nodeID, err := c.hashRing.GetNode(key)
+	c.mu.RUnlock()
+
+	if err != nil {
+		return fmt.Errorf("failed to find node for key %s: %v", key, err)
+	}
+
+	// look up the network address for this node
+	c.mu.RLock()
+	address := c.hashRing.GetNodeAddress(nodeID)
+	c.mu.RUnlock()
+
+	if address == "" {
+		return fmt.Errorf("no address found for node %s", nodeID)
+	}
+
+	fmt.Printf("[CLUSTER CLIENT] Routing SET(%s) with TTL=%v to node %s at %s\n", key, ttl, nodeID, address)
+
+	// get or create a connection to the target node
+	conn, err := c.getOrCreateConnection(address)
+	if err != nil {
+		return err
+	}
+
+	err = conn.SetWithTTL(key, value, ttl)
+	if err != nil {
+		// handle MOVED responses by refreshing topology and refreshing
+		if strings.HasPrefix(err.Error(), "MOVED") {
+			fmt.Printf("[CLUSTER CLIENT] Received MOVED response, refreshing topology\n")
+
+			refreshErr := c.discoverTopology()
+			if refreshErr != nil {
+				return fmt.Errorf("failed to refresh topology: %v", refreshErr)
+			}
+
+			// retry request with updated topology
+			return c.SetWithTTL(key, value, ttl)
+		}
+		return err
+	}
+	
+	return nil
+}
