@@ -129,12 +129,21 @@ func (c *Cache) Delete(key string) error {
 	item, exists := c.data[key]
 
 	if !exists {
+		c.metrics.RecordOperation("delete")
 		return nil
 	}
+
+	// calculate memory to subtract before deleting
+	itemSize := c.calculateItemSize(key, item.value)
+	c.currentMemoryBytes -= itemSize
 
 	c.lru.RemoveNode(item.node)
 	delete(c.data, key)	
 
+	c.metrics.RecordOperation("delete")
+	c.metrics.UpdateItemsCount(len(c.data))
+	c.metrics.UpdateMemoryUsage(c.currentMemoryBytes)
+	
 	return nil
 }
 
