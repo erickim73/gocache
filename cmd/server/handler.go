@@ -37,6 +37,11 @@ func requiresLeader(operation string) bool {
 func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, nodeState *server.NodeState) {
 	defer conn.Close()
 
+	// increment active connections when client connects
+	cache.GetMetrics().IncrementActiveConnections()
+	// decrement when client disconnects
+	defer cache.GetMetrics().DecrementActiveConnections()
+
 	// read from client
 	reader := bufio.NewReader(conn)
 	for {
@@ -56,9 +61,15 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 		}
 		command := resultSlice[0]
 
+		// start timing request here
+		startTime := time.Now()
+
 		// handle CLUSTER commands first
 		if command == "CLUSTER" {
 			handleClusterCommand(conn, resultSlice, cache, nodeState)
+			// record latency for cluster commands
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
 			continue // skip forward check
 		}
 
@@ -79,6 +90,10 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 				msg := fmt.Sprintf("-MOVED %s %s\r\n", targetNodeID, targetAddr)
 				conn.Write([]byte(msg))
 				fmt.Printf("[ROUTING] key '%s' belongs to %s (%s), returning MOVED\n", key, targetNodeID, targetAddr)
+
+				// record latency for forwarded requests
+				duration := time.Since(startTime)
+				cache.GetMetrics().RecordOperationDuration(duration.Seconds())
 				continue
 			}
 
@@ -90,43 +105,53 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 			}
 		}
 
-		
-
-		// get current role and leader
-		// role := nodeState.GetRole()
-		// leader := nodeState.GetLeader()
-		// leaderAddr := nodeState.GetLeaderAddr()
-
-		// // check if command requires leader
-		// if requiresLeader(command.(string)) {
-		// 	// if node isn't leader, redirect client
-		// 	if role != "leader" {
-		// 		redirect := fmt.Sprintf(ErrMovedFormat, leaderAddr)
-		// 		conn.Write([]byte(redirect))
-		// 		continue
-		// 	}
-		// }
-
 		// handle commands
 		switch command {
 		case "SET":
 			// handleSet(conn, resultSlice, cache, aof, leader)
 			leader := nodeState.GetLeader()
 			handleSet(conn, resultSlice, cache, aof, leader)
+			// record latency after set completes
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+
 		case "GET":
 			handleGet(conn, resultSlice, cache)
+			// record latency after get completes
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+
 		case "DEL":
 			// handleDelete(conn, resultSlice, cache, aof, leader)
 			leader := nodeState.GetLeader()
 			handleDelete(conn, resultSlice, cache, aof, leader)
+			// record latency after delete completes
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+
 		case "DBSIZE":
 			handleDBSize(conn, cache)
+			// record latency for dbsize
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+
 		case "PING":
 			handlePing(conn)
+			// record latency for ping
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+
 		case "CLUSTER":
 			handleClusterCommand(conn, resultSlice, cache, nodeState)
+			// record latency for cluster
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+
 		default:
 			conn.Write([]byte(protocol.EncodeError("Unknown command " + command.(string))))
+			// record latency for unknown commands
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
 		}
 	}
 }
@@ -164,15 +189,7 @@ func handleSet(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, aof
 			fmt.Printf("Error replicating SET command: %v\n", err)
 		}
 	}
-
-	// send to followers
-	// if leader != nil {
-	// 	err := leader.Replicate(replication.OpSet, key, value, ttlSeconds)
-	// 	if err != nil {
-	// 		fmt.Printf("Error replicating SET command from leader to follower: %v\n", err)
-	// 	}
-	// }
-
+	
 	// write to aof
 	ttlSecondsStr := strconv.FormatInt(ttlSeconds, 10) 
 	aofCommand := protocol.EncodeArray([]interface{}{"SET", key, value, ttlSecondsStr})
