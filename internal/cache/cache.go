@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 	"github.com/erickim73/gocache/internal/lru"
+	"github.com/erickim73/gocache/internal/metrics"
 )
 
 
@@ -18,19 +19,22 @@ type Cache struct {
 	lru *lru.LRU
 	maxSize int
 	mu sync.RWMutex   // read write lock
+	metrics *metrics.Collector // metrics collector for recording cache operations
+	currentMemoryBytes int64 // track current memory usage for metrics
 }
-
 
 type SnapshotEntry struct {
 	Value string
 	ExpiresAt time.Time
 }
 
-func NewCache(maxSize int) (*Cache, error) {	
+func NewCache(maxSize int, metricsCollector *metrics.Collector) (*Cache, error) {	
 	return &Cache{
 		data: make(map[string]*CacheItem),
 		lru: &lru.LRU{},
 		maxSize: maxSize,
+		metrics: metricsCollector,
+		currentMemoryBytes: 0,
 	}, nil
 }
 
@@ -39,12 +43,25 @@ func (c *Cache) Set(key, value string, ttl time.Duration) error {
 	defer c.mu.Unlock()
 
 	// check if key exists
-	_, exists := c.data[key]
+	existingItem, exists := c.data[key]
+
+	// if updating existing key, subtract old memory first
+	if exists {
+		oldSize := c.calculateItemSize(key, existingItem.value)
+		c.currentMemoryBytes -= oldSize
+	}
 
 	// if cache is full and key doesn't exist
 	if !exists && len(c.data) >= c.maxSize {
-		deletedKey := c.lru.RemoveLRU()
-		delete(c.data, deletedKey)
+		// before evicting, subtract evicted item's memory
+		evictedKey := c.lru.RemoveLRU()
+		evictedItem, found := c.data[evictedKey]
+		if found {
+			evictedSize := c.calculateItemSize(evictedKey, evictedItem.value)
+			c.currentMemoryBytes -= evictedSize
+			c.metrics.RecordEviction() // record that an eviction occured
+		}
+		delete(c.data, evictedKey)
 	}
 
 	// calculate expiration
@@ -65,6 +82,15 @@ func (c *Cache) Set(key, value string, ttl time.Duration) error {
 			node: node,
 		}
 	}
+
+	// calculate and add new memory
+	newSize := c.calculateItemSize(key, value)
+	c.currentMemoryBytes += newSize
+
+	// record metrics after successful operation
+	c.metrics.RecordOperation("set")
+	c.metrics.UpdateItemsCount(len(c.data))
+	c.metrics.UpdateMemoryUsage(c.currentMemoryBytes)
 
 	return nil
 }
