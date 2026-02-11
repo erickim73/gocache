@@ -2,22 +2,6 @@ package cache
 
 import "time"
 
-// returns all keys stored in the cache right now
-func (c *Cache) GetAllKeys() []string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	// pre-allocate slice with exact capacity to avoid resizing
-	keys := make([]string, 0, len(c.data))
-
-	// iterate through the map and collect all keys
-	for key := range c.data {
-		keys = append(keys, key)
-	}
-
-	return keys
-}
-
 // returns all keys whose hash values fall within [start, end)
 func (c *Cache) GetKeysInHashRange(start uint32, end uint32, hashFunc func(string) uint32) []string {
 	c.mu.RLock()
