@@ -21,6 +21,7 @@ type NodeInfo struct {
 
 type yamlConfig struct {
 	Port                    int        `yaml:"port"`
+	MetricsPort 			int 	   `yaml:metrics_port`
 	MaxCacheSize            int        `yaml:"max_cache_size"`
 	Role 					string     `yaml:"role"`
 	LeaderAddr 				string     `yaml:"leader_addr"`
@@ -40,6 +41,9 @@ type yamlConfig struct {
 type Config struct {
 	// server settings
 	Port int
+	
+	// metrics settings
+	MetricsPort int
 
 	// cache settings
 	MaxCacheSize int
@@ -73,6 +77,7 @@ type ShardInfo struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Port:             7000,
+		MetricsPort: 	  9090,
 		MaxCacheSize:     1000,
 		Role: 			  "leader",
 		LeaderAddr: 	  "localhost:7001",

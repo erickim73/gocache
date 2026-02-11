@@ -24,6 +24,9 @@ func main() {
 	// apply flags after loading file
 	config.ApplyFlags(cfg)
 
+	// start metrics server 
+	go StartMetricsServer(cfg.MetricsPort)
+
 	// determine which mode we're in 
 	if cfg.IsClusterMode() {
 		fmt.Println("Starting in CLUSTER mode")
