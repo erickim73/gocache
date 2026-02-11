@@ -209,3 +209,20 @@ func (c *Cache) CleanupExpired() int {
 
 	return expiredCount
 }
+
+// helper function to access metrics collector
+func (c *Cache) GetMetrics() *metrics.Collector {
+	return c.metrics
+}
+
+// helper function to get all keys
+func (c *Cache) GetAllKeys() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	keys := make([]string, 0, len(c.data))
+	for key := range c.data {
+		keys = append(keys, key)
+	}
+	return keys
+}
