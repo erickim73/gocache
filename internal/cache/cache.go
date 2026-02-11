@@ -98,17 +98,26 @@ func (c *Cache) Set(key, value string, ttl time.Duration) error {
 func (c *Cache) Get(key string) (string, bool) {
 	c.mu.RLock() 		// multiple readers can enter
 	defer c.mu.RUnlock()
+
+	c.metrics.RecordOperation("get")
 	
 	node, exists := c.data[key]
 	
+	// key doesn't exist in cache
 	if !exists {
+		c.metrics.RecordCacheMiss()
 		return "", false
 	}
 
+	// key exists but has expired
 	if !node.expiresAt.IsZero() && time.Now().After(node.expiresAt) {
+		c.metrics.RecordCacheMiss()
+		c.metrics.RecordExpiration()
 		return "", false
 	}
 	
+	// key exists and is valid
+	c.metrics.RecordCacheHit()
 	c.lru.MoveToFront(node.node)
 	return node.value, true
 }
