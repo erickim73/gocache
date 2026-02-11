@@ -113,3 +113,68 @@ func NewCollector() *Collector {
 
 	return collector
 }
+
+// record an operation. increments operations counter with label
+func (c *Collector) RecordOperation(operation string) {
+	c.OperationsTotal.WithLabelValues(operation).Inc()
+}
+
+// increments cache hits counter 
+func (c *Collector) RecordCacheHit() {
+	c.CacheHits.Inc()
+}
+
+// increments cache misses counter
+func (c *Collector) RecordCacheMiss() {
+	c.CacheMisses.Inc()
+}
+
+// records duration of operation 
+func (c *Collector) RecordOperationDuration(durationSeconds float64) {
+	c.OperationDuration.Observe(durationSeconds)
+}
+
+// sets current memory usage in bytes
+func (c *Collector) UpdateMemoryUsage(bytes int64) {
+	c.MemoryBytes.Set(float64(bytes))
+}
+
+// sets current number of items in cache
+func (c *Collector) UpdateItemsCount(count int) {
+	c.ItemsCount.Set(float64(count))
+}
+
+// increments eviction counter
+func (c *Collector) RecordEviction() {
+	c.EvictionsTotal.Inc()
+}
+
+// increments expiration counter
+func (c *Collector) RecordExpiration() {
+	c.ExpirationsTotal.Inc()
+}
+
+// increases active connection count 
+func (c *Collector) IncrementActiveConnections() {
+	c.ActiveConnections.Inc()
+}
+
+// decreases active connection count 
+func (c *Collector) DecrementActiveConnections() {
+	c.ActiveConnections.Dec()
+}
+
+// sets current replication lag
+func (c *Collector) UpdateReplicationLag(lagSeconds float64) {
+	c.ReplicationLag.Set(lagSeconds)
+}
+
+// sets number of connected followers
+func (c *Collector) UpdateConnectedFollowers(count int) {
+	c.ConnectedFollowers.Set(float64(count))
+}
+
+// calculates current cache hit rate
+func (c *Collector) GetCacheHitRate() float64 {
+	return 0.0 // placeholder. prometheus calculates this from raw counters
+}
