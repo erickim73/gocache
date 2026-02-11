@@ -143,8 +143,23 @@ func (c *Cache) Delete(key string) error {
 	c.metrics.RecordOperation("delete")
 	c.metrics.UpdateItemsCount(len(c.data))
 	c.metrics.UpdateMemoryUsage(c.currentMemoryBytes)
-	
+
 	return nil
+}
+
+// calculate memory usage of cache item
+func (c *Cache) calculateItemSize(key string, value string) int64 {
+	// string memory in go: 
+	// string header: 16 bytes (pointer + length). string data: len(string) bytes
+
+	keySize := int64(len(key) + 16) // key string + header
+	valueSize := int64(len(value) + 16) // value string + header
+
+	// overhead for CacheItem struct: 
+	// - expiresAt: 24 bytes, node pointer: 8 bytes, map entry overhead: ~16 bytes
+	overhead := int64(64)
+
+	return keySize + valueSize + overhead
 }
 
 func (c *Cache) Snapshot() map[string]SnapshotEntry {
@@ -160,4 +175,37 @@ func (c *Cache) Snapshot() map[string]SnapshotEntry {
 	c.mu.Unlock()
 
 	return snapshot
+}
+
+// helper method to clean up expired items
+func (c *Cache) CleanupExpired() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	expiredCount := 0
+	now := time.Now()
+
+	for key, item := range c.data {
+		if !item.expiresAt.IsZero() && now.After(item.expiresAt) {
+			// calculate memory before deletion
+			itemSize := c.calculateItemSize(key, item.value)
+			c.currentMemoryBytes -= itemSize
+
+			// remove from lru and map
+			c.lru.RemoveNode(item.node)
+			delete(c.data, key)
+
+			// record expiration metric
+			c.metrics.RecordExpiration()
+			expiredCount++
+		}
+	}
+
+	// update metrics if any items were removed
+	if expiredCount > 0 {
+		c.metrics.UpdateItemsCount(len(c.data))
+		c.metrics.UpdateMemoryUsage(c.currentMemoryBytes)
+	}
+
+	return expiredCount
 }
