@@ -3,10 +3,15 @@ package cache
 import (
 	"testing"
 	"time"
+	"github.com/erickim73/gocache/internal/metrics"
 )
 
 func TestSetAndGet(t *testing.T) {
-	cache, _ := NewCache(100)
+	metricsCollector := metrics.NewCollector()
+	cache, err := NewCache(100, metricsCollector)
+	if err != nil {
+		t.Errorf("error creating new cache: %v", err)
+	}
 
 	cache.Set("eric", "smart", 100*time.Second)
 	result, exists := cache.Get("eric")
@@ -21,7 +26,11 @@ func TestSetAndGet(t *testing.T) {
 }
 
 func TestInvalidKey(t *testing.T) {
-	cache, _ := NewCache(100)
+	metricsCollector := metrics.NewCollector()
+	cache, err := NewCache(100, metricsCollector)
+	if err != nil {
+		t.Errorf("error creating new cache: %v", err)
+	}
 
 	cache.Set("eric", "smart", 100*time.Second)
 	result, exists := cache.Get("aiden")
@@ -35,7 +44,11 @@ func TestInvalidKey(t *testing.T) {
 }
 
 func TestLRUEviction(t *testing.T) {
-	cache, _ := NewCache(3)
+	metricsCollector := metrics.NewCollector()
+	cache, err := NewCache(3, metricsCollector)
+	if err != nil {
+		t.Errorf("error creating new cache: %v", err)
+	}
 
 	cache.Set("A", "1", 0) // [A]
 	cache.Set("B", "2", 0) // [B, A]

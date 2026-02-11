@@ -16,6 +16,7 @@ import (
 	"github.com/erickim73/gocache/internal/server"
 	"github.com/erickim73/gocache/pkg/client"
 	"github.com/erickim73/gocache/pkg/protocol"
+	"github.com/erickim73/gocache/internal/metrics"
 )
 
 // TestRedirect verifies that clients automatically follow redirects from follower to leader
@@ -367,7 +368,8 @@ type TestServer struct {
 // startTestLeader starts a leader server for testing
 func startTestLeader(t *testing.T, port int) *TestServer {
 	// create cache
-	myCache, err := cache.NewCache(100)
+	metricsCollector := metrics.NewCollector()
+	myCache, err := cache.NewCache(100, metricsCollector)
 	if err != nil {
 		t.Fatalf("Failed to create cache: %v", err)
 	}
@@ -423,7 +425,8 @@ func startTestLeader(t *testing.T, port int) *TestServer {
 // startTestFollower starts a follower server for testing
 func startTestFollower(t *testing.T, port int, leaderAddr string) *TestServer {
 	// create cache
-	myCache, err := cache.NewCache(100)
+	metricsCollector := metrics.NewCollector()
+	myCache, err := cache.NewCache(100, metricsCollector)
 	if err != nil {
 		t.Fatalf("Failed to create cache: %v", err)
 	}

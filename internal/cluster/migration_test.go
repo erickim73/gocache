@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/erickim73/gocache/internal/cache"
+	"github.com/erickim73/gocache/internal/metrics"
 )
 
 // tests that we correctly identify which keys to migrate
@@ -94,7 +95,8 @@ func TestHashRangeDetection(t * testing.T) {
 // tests that cache can enumerate keys in hash ranges
 func TestKeyEnumeration(t *testing.T) {
 	// create cache and hash ring
-	c, err := cache.NewCache(1000)
+	metricsCollector := metrics.NewCollector()
+	c, err := cache.NewCache(1000, metricsCollector)
 	if err != nil {
 		t.Errorf("Error creating cache: %v\n", err)
 	}
@@ -137,7 +139,8 @@ func TestKeyEnumeration(t *testing.T) {
 // tests the complete migration process
 func TestFullMigrationFlow(t *testing.T) {
 	// setup
-	c, err := cache.NewCache(1000)
+	metricsCollector := metrics.NewCollector()
+	c, err := cache.NewCache(1000, metricsCollector)
 	if err != nil {
 		t.Errorf("Error creating cache: %v\n", err)
 	}
@@ -193,7 +196,8 @@ func BenchmarkHashCalculation(b *testing.B) {
 
 // benchmarks finding keys in a range
 func BenchmarkKeyEnumeration(b *testing.B) {
-	c, err := cache.NewCache(10000)
+	metricsCollector := metrics.NewCollector()
+	c, err := cache.NewCache(10000, metricsCollector)
 	if err != nil {
 		b.Errorf("Error creating cache: %v\n", err)
 	}

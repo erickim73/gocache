@@ -11,6 +11,7 @@ import (
 	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/internal/replication"
 	"github.com/erickim73/gocache/internal/server"
+	"github.com/erickim73/gocache/internal/metrics"
 	"github.com/google/uuid"
 )
 
@@ -26,7 +27,8 @@ func startSimpleMode(cfg *config.Config) {
 	fmt.Printf("GrowthFactor: %d\n", cfg.GrowthFactor)
 
 	// create a cache
-	myCache, err := cache.NewCache(cfg.MaxCacheSize)
+	metricsCollector := metrics.NewCollector()
+	myCache, err := cache.NewCache(cfg.MaxCacheSize, metricsCollector)
 	if err != nil {
 		fmt.Printf("error creating new cache: %v\n", err)
 		return
@@ -136,7 +138,8 @@ func startClusterMode(cfg *config.Config) {
 	}
 
 	// create a cache
-	myCache, err := cache.NewCache(cfg.MaxCacheSize)
+	metricsCollector := metrics.NewCollector()
+	myCache, err := cache.NewCache(cfg.MaxCacheSize, metricsCollector)
 	if err != nil {
 		fmt.Printf("error creating new cache: %v\n", err)
 		return
@@ -486,7 +489,8 @@ func startPendingNode(cfg *config.Config) {
 	fmt.Printf("Status: PENDING - waiting to join cluster\n")
 
 	// create cache
-	myCache, err := cache.NewCache(cfg.MaxCacheSize)
+	metricsCollector := metrics.NewCollector()
+	myCache, err := cache.NewCache(cfg.MaxCacheSize, metricsCollector)
 	if err != nil {
 		fmt.Printf("error creating new cache: %v\n", err)
 		return
