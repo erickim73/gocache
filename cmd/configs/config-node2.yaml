@@ -2,6 +2,7 @@
 node_id: "node2"
 port: 8380
 repl_port: 9380
+metrics_port: 9091
 
 # cache settings
 max_cache_size: 1000
