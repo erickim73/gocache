@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
 )
 
@@ -62,10 +63,20 @@ func (hr *HashRing) CalculateMigrations(newNodeID string) []MigrationTask {
 			}
 			tasks = append(tasks, task)
 
-			// fmt.Printf("[MIGRATION] Task created: %s [%d->%d] -> %s\n", prevNode, prevHash, vhash, newNodeID)
+			slog.Debug("Migration task created",
+				"from_node", prevNode,
+				"to_node", newNodeID,
+				"start_hash", prevHash,
+				"end_hash", vhash,
+				"virtual_node_index", i,
+			)
 		}
 	}
-	fmt.Printf("[MIGRATION] Calculated %d migration tasks for %s\n", len(tasks), newNodeID)
+	slog.Info("Migration calculation completed",
+		"target_node", newNodeID,
+		"task_count", len(tasks),
+		"virtual_nodes", hr.virtualNodes,
+	)
 		
 	return tasks
 }
@@ -76,7 +87,9 @@ func (hr *HashRing) CalculateMigrationsForRemoval(removeNodeID string) []Migrati
 	defer hr.mu.RUnlock()
 
 	if len(hr.hashValues) == 0 {
-		fmt.Printf("[MIGRATION] Warning: Cannot remove from empty hash ring\n")
+		slog.Warn("Cannot calculate migrations for empty hash ring",
+			"removing_node", removeNodeID,
+		)
 		return []MigrationTask{}
 	}
 
@@ -120,11 +133,21 @@ func (hr *HashRing) CalculateMigrationsForRemoval(removeNodeID string) []Migrati
 			}
 			tasks = append(tasks, task)
 			
-			// fmt.Printf("[MIGRATION] Removal tasks: %s [%d->%d] -> %s\n", removeNodeID, prevHash, vhash, nextNode)
+			slog.Debug("Removal task created",
+				"from_node", removeNodeID,
+				"to_node", nextNode,
+				"start_hash", prevHash,
+				"end_hash", vhash,
+				"virtual_node_index", i,
+			)
 		}
 	}
 
-	fmt.Printf("[MIGRATION] Calculated %d removal tasks for %s\n", len(tasks), removeNodeID)
+	slog.Info("Removal migration calculation completed",
+		"removing_node", removeNodeID,
+		"task_count", len(tasks),
+		"virtual_nodes", hr.virtualNodes,
+	)
 
 	return tasks
 } 

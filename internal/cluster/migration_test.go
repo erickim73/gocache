@@ -24,8 +24,11 @@ func TestMigrationCalculation(t *testing.T) {
 		t.Errorf("Expected 10 migration tasks, got %d", len(tasks))
 	}
 
+	t.Logf("Migration calculation generated %d tasks", len(tasks))
+
 	for i, task := range tasks {
-		fmt.Printf("Task %d: %s[%d->%d] -> %s\n", i + 1, task.FromNode, task.StartHash, task.EndHash, task.ToNode)
+		t.Logf("Task %d: %s[%d->%d] -> %s",
+			i+1, task.FromNode, task.StartHash, task.EndHash, task.ToNode)
 
 		// verify target is always node4
 		if task.ToNode != "node4" {
@@ -60,6 +63,8 @@ func TestHashRangeDetection(t * testing.T) {
 		{600, false, "hash after end"},
 	}
 
+	t.Logf("Testing normal range [%d, %d)", start, end)
+
 	for _, tc := range testCases {
 		result := hr.hashInRange(tc.hash, start, end)
 		if result != tc.expected {
@@ -83,6 +88,8 @@ func TestHashRangeDetection(t * testing.T) {
 		{500, false, "hash in middle gap"},
 		{2000000000, false, "hash in middle gap"},
 	}
+	
+	t.Logf("Testing wrap-around range [%d, %d)", start, end)
 
 	for _, tc := range wrapTestCases {
 		result := hr.hashInRange(tc.hash, start, end)
@@ -125,7 +132,8 @@ func TestKeyEnumeration(t *testing.T) {
 
 	keysInRange := c.GetKeysInHashRange(start, end, hr.Hash)
 
-	fmt.Printf("Keys in range [%d, %d): %d out of %d\n", start, end, len(keysInRange), len(testKeys))
+	t.Logf("Keys in range [%d, %d): %d out of %d",
+		start, end, len(keysInRange), len(testKeys))
 
 	// verify each key in result actually hashes to the range
 	for _, key := range keysInRange {
@@ -159,7 +167,7 @@ func TestFullMigrationFlow(t *testing.T) {
 	}
 
 	initialCount := len(c.GetAllKeys())
-	fmt.Printf("Initial key count: %d\n", initialCount)
+	t.Logf("Initial key count: %d", initialCount)
 
 	// calculate migrations for node4
 	tasks := hr.CalculateMigrations("node4")
@@ -171,7 +179,9 @@ func TestFullMigrationFlow(t *testing.T) {
 		totalToMigrate += len(keys)
 	}
 
-	fmt.Printf("Keys that would migrate to node 4: %d (%.1f%%)\n", totalToMigrate, float64(totalToMigrate)/float64(initialCount) * 100)
+	migrationPercent := float64(totalToMigrate) / float64(initialCount) * 100
+	t.Logf("Keys that would migrate to node 4: %d (%.1f%%)",
+		totalToMigrate, migrationPercent)
 
 	// verify roughly 25% of keys would migrate
 	expectedPercent := 25.0
@@ -180,6 +190,8 @@ func TestFullMigrationFlow(t *testing.T) {
 	// allow 10% margin of error due to hashing variance
 	if actualPercent < expectedPercent - 10 || actualPercent > expectedPercent + 10 {
 		t.Errorf("Expected ~%.0f%% keys to migrate, got %.1f%%", expectedPercent, actualPercent)
+	} else {
+		t.Logf("✓ Migration percentage within expected range (%.1f%% vs target ~%.0f%%)", actualPercent, expectedPercent)
 	}
 }
 
