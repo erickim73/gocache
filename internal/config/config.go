@@ -140,7 +140,7 @@ func ParseFlags(cfg *Config) string {
 
 	// server flags
 	flag.IntVar(&cfg.Port, "port", cfg.Port, "Server port")
-	flag.IntVar(&cfg.MetricsPort, "metrics_port", cfg.Port, "Metrics port")
+	flag.IntVar(&cfg.MetricsPort, "metrics_port", cfg.MetricsPort, "Metrics port")
 
 	// cache flags
 	flag.IntVar(&cfg.MaxCacheSize, "max-size", cfg.MaxCacheSize, "Maximum cache size")

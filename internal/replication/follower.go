@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/erickim73/gocache/internal/cache"
-	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/internal/config"
+	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
@@ -552,7 +553,7 @@ func (f *Follower) findNewLeader() string {
 			continue
 		}
 
-		addr := fmt.Sprintf("%s:%d", node.Host, node.ReplPort)
+		addr := net.JoinHostPort(node.Host, strconv.Itoa(node.ReplPort))
 
 		conn, err := net.DialTimeout("tcp", addr, timeout)
 		if err != nil {

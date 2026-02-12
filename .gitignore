@@ -3,3 +3,5 @@ cmd/server/cache.aof
 internal/persistence/bench_test_*
 cmd/data/*
 server.exe
+cache.aof
+cache.aof
