@@ -35,7 +35,7 @@ type yamlConfig struct {
 	NodeID                  string      `yaml:"node_id"`
 	Nodes                   []NodeInfo  `yaml:"nodes"`
 	Shards 					[]ShardInfo `yaml:"shards"`
-	LogLevel 				string 		`yaml:"log_level"`
+	LogLevel 				string 		`yaml:"log_level"` // debug, info, warn, error
 }
 
 
@@ -65,10 +65,10 @@ type Config struct {
 	Nodes            []NodeInfo
 
 	// shard settings
-	Shards []ShardInfo `yaml:"shards"` 
+	Shards []ShardInfo 
 
 	// logging statistics
-	LogLevel string `yaml:"log_level"` // debug, info, warn, error
+	LogLevel string
 }
 
 // defines a replication group

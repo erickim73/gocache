@@ -78,6 +78,6 @@ func InitTextLogger(level LogLevel) {
 	// log that logging is initialized
 	slog.Info("Logger initialized",
 		"level", level,
-		"format", "json",
+		"format", "text",
 	)
 }

@@ -9,7 +9,7 @@ import (
 
 func main() {
 	// initialize logger
-	logger.InitTextLogger(logger.LevelInfo)	
+	logger.InitLogger(logger.LevelInfo)	
 
 	// load defaults
 	cfg := config.DefaultConfig()
@@ -31,8 +31,10 @@ func main() {
 	// apply flags after loading file
 	config.ApplyFlags(cfg)
 
-	// re-initialize logger with configured log level
-	logger.InitLogger(logger.LogLevel(cfg.LogLevel))
+	// re-initialize logger only if log level changed
+	if cfg.LogLevel != "info" {
+		logger.InitLogger(logger.LogLevel(cfg.LogLevel))
+	}
 
 	slog.Info("Configuration loaded",
 		"mode", func() string {
