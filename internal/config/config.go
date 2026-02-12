@@ -21,7 +21,7 @@ type NodeInfo struct {
 
 type yamlConfig struct {
 	Port                    int        `yaml:"port"`
-	MetricsPort 			int 	   `yaml:metrics_port`
+	MetricsPort 			int 	   `yaml:"metrics_port"`
 	MaxCacheSize            int        `yaml:"max_cache_size"`
 	Role 					string     `yaml:"role"`
 	LeaderAddr 				string     `yaml:"leader_addr"`
@@ -106,6 +106,7 @@ func LoadFromFile(fileName string) (*Config, error) {
 	// convert to config struct
 	return &Config{
 		Port:             yc.Port,
+		MetricsPort: 	  yc.MetricsPort,
 		MaxCacheSize:     yc.MaxCacheSize,
 		Role: 			  yc.Role,
 		LeaderAddr: 	  yc.LeaderAddr,
@@ -139,6 +140,7 @@ func ParseFlags(cfg *Config) string {
 
 	// server flags
 	flag.IntVar(&cfg.Port, "port", cfg.Port, "Server port")
+	flag.IntVar(&cfg.MetricsPort, "metrics_port", cfg.Port, "Metrics port")
 
 	// cache flags
 	flag.IntVar(&cfg.MaxCacheSize, "max-size", cfg.MaxCacheSize, "Maximum cache size")
@@ -171,6 +173,8 @@ func ApplyFlags(cfg *Config) {
 		switch f.Name {
 		case "port":
 			fmt.Sscanf(f.Value.String(), "%d", &cfg.Port)
+		case "metrics-port":
+			fmt.Sscanf(f.Value.String(), "%d", &cfg.MetricsPort)
 		case "max-size":
 			fmt.Sscanf(f.Value.String(), "%d", &cfg.MaxCacheSize)
 		case "role":
