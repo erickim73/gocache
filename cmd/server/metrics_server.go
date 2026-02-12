@@ -9,7 +9,7 @@ import (
 )
 
 // creates and starts an http server that exposes prometheus metrics
-func StartMetricsServer(port string) {
+func StartMetricsServer(port int) {
 	// create new http mux (router) for metrics server. avoids conflicts with any other http servers that might be running
 	mux := http.NewServeMux()
 
@@ -26,43 +26,43 @@ func StartMetricsServer(port string) {
 	// add a root endpoint with helpful information
 	// when users navigate to http://localhost:9090/, they'll see instructions
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-TYpe", "text/html")
-		html := `
+		w.Header().Set("Content-Type", "text/html")
+		html := fmt.Sprintf(`
 <DOCTYPE html>
 <html>
 <head>
-    <title>GoCache Metrics</title>
+	<title>GoCache Metrics</title>
 </head>
 <body>
-    <h1>GoCache Metrics Server</h1>
-    <p>This server exposes Prometheus metrics for monitoring.</p>
-    <ul>
-        <li><a href="/metrics">Metrics Endpoint</a> - Prometheus metrics in text format</li>
-        <li><a href="/health">Health Check</a> - Server health status</li>
-    </ul>
-    <h2>Usage</h2>
-    <p>Configure Prometheus to scrape: <code>http://localhost:` + port + `/metrics</code></p>
-    <h2>Available Metrics</h2>
-    <ul>
-        <li><strong>gocache_operations_total</strong> - Total cache operations by type</li>
-        <li><strong>gocache_cache_hits_total</strong> - Total cache hits</li>
-        <li><strong>gocache_cache_misses_total</strong> - Total cache misses</li>
-        <li><strong>gocache_operation_duration_seconds</strong> - Operation latency histogram</li>
-        <li><strong>gocache_memory_bytes</strong> - Current memory usage</li>
-        <li><strong>gocache_items_count</strong> - Number of items in cache</li>
-        <li><strong>gocache_evictions_total</strong> - Total LRU evictions</li>
-        <li><strong>gocache_expirations_total</strong> - Total TTL expirations</li>
-        <li><strong>gocache_active_connections</strong> - Active client connections</li>
-    </ul>
+	<h1>GoCache Metrics Server</h1>
+	<p>This server exposes Prometheus metrics for monitoring.</p>
+	<ul>
+		<li><a href="/metrics">Metrics Endpoint</a> - Prometheus metrics in text format</li>
+		<li><a href="/health">Health Check</a> - Server health status</li>
+	</ul>
+	<h2>Usage</h2>
+	<p>Configure Prometheus to scrape: <code>http://localhost:%d/metrics</code></p>
+	<h2>Available Metrics</h2>
+	<ul>
+		<li><strong>gocache_operations_total</strong> - Total cache operations by type</li>
+		<li><strong>gocache_cache_hits_total</strong> - Total cache hits</li>
+		<li><strong>gocache_cache_misses_total</strong> - Total cache misses</li>
+		<li><strong>gocache_operation_duration_seconds</strong> - Operation latency histogram</li>
+		<li><strong>gocache_memory_bytes</strong> - Current memory usage</li>
+		<li><strong>gocache_items_count</strong> - Number of items in cache</li>
+		<li><strong>gocache_evictions_total</strong> - Total LRU evictions</li>
+		<li><strong>gocache_expirations_total</strong> - Total TTL expirations</li>
+		<li><strong>gocache_active_connections</strong> - Active client connections</li>
+	</ul>
 </body>
 </html>
-`
+`, port)
 		w.Write([]byte(html))
 	})
 
 	// create http server with reasonable timeouts
 	server := &http.Server{
-		Addr: ":" + port,
+		Addr: fmt.Sprintf(":%d", port),
 		Handler: mux,
 
 		// max duration for reading the entire request
@@ -77,9 +77,9 @@ func StartMetricsServer(port string) {
 
 	// log startup message
 	fmt.Printf("\n=== Metrics Server Starting ===\n")
-	fmt.Printf("Metrics endpoint: http://0.0.0.0:%s/metrics\n", port)
-	fmt.Printf("Health endpoint:  http://0.0.0.0:%s/health\n", port)
-	fmt.Printf("Web UI:           http://0.0.0.0:%s/\n", port)
+	fmt.Printf("Metrics endpoint: http://0.0.0.0:%d/metrics\n", port)
+	fmt.Printf("Health endpoint:  http://0.0.0.0:%d/health\n", port)
+	fmt.Printf("Web UI:           http://0.0.0.0:%d/\n", port)
 	fmt.Printf("==============================\n\n")
 
 	// start server. ListenAndServe blocks until server stops or encounters an error
