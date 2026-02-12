@@ -20,21 +20,22 @@ type NodeInfo struct {
 }
 
 type yamlConfig struct {
-	Port                    int        `yaml:"port"`
-	MetricsPort 			int 	   `yaml:"metrics_port"`
-	MaxCacheSize            int        `yaml:"max_cache_size"`
-	Role 					string     `yaml:"role"`
-	LeaderAddr 				string     `yaml:"leader_addr"`
-	AOFFileName             string     `yaml:"aof_file"`
-	SnapshotFileName        string     `yaml:"snapshot_file"`
-	SyncPolicy              string     `yaml:"sync_policy"`
-	SnapshotIntervalSeconds int        `yaml:"snapshot_interval_seconds"`
-	GrowthFactor            int64      `yaml:"growth_factor"`
+	Port                    int         `yaml:"port"`
+	MetricsPort 			int 	    `yaml:"metrics_port"`
+	MaxCacheSize            int         `yaml:"max_cache_size"`
+	Role 					string      `yaml:"role"`
+	LeaderAddr 				string      `yaml:"leader_addr"`
+	AOFFileName             string      `yaml:"aof_file"`
+	SnapshotFileName        string      `yaml:"snapshot_file"`
+	SyncPolicy              string      `yaml:"sync_policy"`
+	SnapshotIntervalSeconds int         `yaml:"snapshot_interval_seconds"`
+	GrowthFactor            int64       `yaml:"growth_factor"`
     
 	// cluster fields to YAML parsing
-	NodeID                  string     `yaml:"node_id"`
-	Nodes                   []NodeInfo `yaml:"nodes"`
+	NodeID                  string      `yaml:"node_id"`
+	Nodes                   []NodeInfo  `yaml:"nodes"`
 	Shards 					[]ShardInfo `yaml:"shards"`
+	LogLevel 				string 		`yaml:"log_level"`
 }
 
 
@@ -64,7 +65,10 @@ type Config struct {
 	Nodes            []NodeInfo
 
 	// shard settings
-	Shards []ShardInfo `yaml:"shards"` // shard definitions
+	Shards []ShardInfo `yaml:"shards"` 
+
+	// logging statistics
+	LogLevel string `yaml:"log_level"` // debug, info, warn, error
 }
 
 // defines a replication group
@@ -88,6 +92,7 @@ func DefaultConfig() *Config {
 		GrowthFactor:     2,
 		NodeID:           "",
 		Nodes:            []NodeInfo{},
+		LogLevel: 		  "info",
 	}
 }
 
@@ -118,6 +123,7 @@ func LoadFromFile(fileName string) (*Config, error) {
 		NodeID:           yc.NodeID,
 		Nodes:            yc.Nodes,
 		Shards: 		  yc.Shards,
+		LogLevel:         yc.LogLevel,
 	}, nil
 }
 
