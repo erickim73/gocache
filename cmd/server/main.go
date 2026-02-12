@@ -1,12 +1,16 @@
 package main
 
 import (
-	"fmt"
+	"log/slog"
 	
 	"github.com/erickim73/gocache/internal/config"
+	"github.com/erickim73/gocache/internal/logger"
 )
 
 func main() {
+	// initialize logger
+	logger.InitTextLogger(logger.LevelInfo)	
+
 	// load defaults
 	cfg := config.DefaultConfig()
 
@@ -16,7 +20,10 @@ func main() {
 	// load config file
 	fileCfg, err := config.LoadFromFile(configFile)
 	if err != nil {
-		fmt.Printf("Could not load config file '%s', using defaults: %v\n", configFile, err)
+		slog.Warn("Could not load config file, using defaults",
+			"file", configFile,
+			"error", err,
+		)
 	} else {
 		cfg = fileCfg
 	}
@@ -24,15 +31,29 @@ func main() {
 	// apply flags after loading file
 	config.ApplyFlags(cfg)
 
+	// re-initialize logger with configured log level
+	logger.InitLogger(logger.LogLevel(cfg.LogLevel))
+
+	slog.Info("Configuration loaded",
+		"mode", func() string {
+			if cfg.IsClusterMode() {
+				return "cluster"
+			}
+			return "simple"
+		}(), 
+		"port", cfg.Port,
+		"metrics_port", cfg.MetricsPort,
+	)
+
 	// start metrics server 
 	go StartMetricsServer(cfg.MetricsPort)
 
 	// determine which mode we're in 
 	if cfg.IsClusterMode() {
-		fmt.Println("Starting in CLUSTER mode")
+		slog.Info("Starting in CLUSTER mode", "node_id", cfg.NodeID)
 		startClusterMode(cfg)
 	} else {
-		fmt.Println("Starting in SIMPLE mode")
+		slog.Info("Starting in SIMPLE mode")
 		startSimpleMode(cfg)
 	}
 }
