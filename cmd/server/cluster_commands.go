@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"time"
+	"log/slog"
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/server"
@@ -53,16 +54,26 @@ func handleClusterTopology(conn net.Conn, command []interface{}, nodeState *serv
 
 	switch operation {
 	case "ADD":
-		fmt.Printf("[CLUSTER] Received topology update: ADD %s at %s\n", targetNodeID, targetNodeAddr)
+		slog.Info("Topology update received",
+			"operation", "ADD",
+			"node_id", targetNodeID,
+			"address", targetNodeAddr,
+		)
 		hashRing.AddShard(targetNodeID)
 		hashRing.SetNodeAddress(targetNodeID, targetNodeAddr)
-		fmt.Printf("[CLUSTER] Updated local hash ring\n")
+		
+		slog.Info("Hash ring updated", "operation", "ADD", "node_id", targetNodeID)
+
 	case "REMOVE":
-		fmt.Printf("[CLUSTER] Received topology update: REMOVE %s\n", targetNodeID)
+		slog.Info("Topology update received",
+			"operation", "REMOVE",
+			"node_id", targetNodeID,
+		)
 		hashRing.RemoveShard(targetNodeID)
 		hashRing.SetNodeAddress(targetNodeID, "")
-		fmt.Printf("[CLUSTER] Updated local hash ring\n")
+		slog.Info("Hash ring updated", "operation", "REMOVE", "node_id", targetNodeID)
 	default:
+		slog.Warn("Unknown topology operation", "operation", operation)
 		conn.Write([]byte(protocol.EncodeError("Unknown TOPOLOGY operation")))
 		return
 	}
@@ -82,48 +93,72 @@ func handleClusterAddNode(conn net.Conn, command []interface{}, cache *cache.Cac
 	newNodeID := command[2].(string)
 	newNodeAddr := command[3].(string)
 
-	fmt.Printf("[CLUSTER] Adding node %s at %s\n", newNodeID, newNodeAddr)
+	slog.Info("Adding node to cluster",
+		"node_id", newNodeID,
+		"address", newNodeAddr,
+	)
 
 	// check if node is already in cluster
 	hashRing := nodeState.GetHashRing()
 	existingNodes := hashRing.GetAllNodes()
 	for _, nodeID := range existingNodes {
 		if nodeID == newNodeID {
+			slog.Warn("Node already exists in cluster", "node_id", newNodeID)
 			conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("Node %s already exists in cluster", newNodeID))))
 			return
 		}
 	}
 
 	// test connection to new node before starting migration
-	fmt.Printf("[CLUSTER] Testing connection to %s...\n", newNodeAddr)
+	slog.Info("Testing connection to new node",
+		"node_id", newNodeID,
+		"address", newNodeAddr,
+	)
 	testConn, err := net.DialTimeout("tcp", newNodeAddr, 2 * time.Second)
 	if err != nil {
+		slog.Error("Connection test failed",
+			"node_id", newNodeID,
+			"address", newNodeAddr,
+			"error", err,
+		)
+		
 		errorMsg := fmt.Sprintf("Cannot connect to node %s at %s. Make sure the node is running first. Error: %v", newNodeID, newNodeAddr, err)
 		conn.Write([]byte(protocol.EncodeError(errorMsg)))
 		return
 	}
 	testConn.Close()
-	fmt.Printf("[CLUSTER] Connection test successful\n")
+	slog.Info("Connection test successful", "node_id", newNodeID)
 
 	// get migrator from node state. handles all migration logic
 	migrator := nodeState.GetMigrator()
 	if migrator == nil {
+		slog.Error("Migrator not initialized")
 		conn.Write([]byte(protocol.EncodeError("Cluster not initialized")))
 		return
 	}
 
 	// trigger the migration process
+	slog.Info("Starting data migration", "target_node", newNodeID)
+
 	err = migrator.MigrateToNewNode(newNodeID, newNodeAddr)
 	if err != nil {
+		slog.Error("Migration failed",
+			"target_node", newNodeID,
+			"error", err,
+		)
+		
 		// if migration fails, return error to client
 		conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("Migration failed: %v", err))))
 		return
 	}
 
+	// log migration
+	slog.Info("Data migration completed", "target_node", newNodeID)
+
 	// broadcast to all other nodes in cluster
 	config := nodeState.GetConfig()
 
-	fmt.Printf("[CLUSTER] Broadcasting node addition to other nodes...\n")
+	slog.Info("Broadcasting topology change to cluster", "operation", "ADD", "node_id", newNodeID)
 	for _, node := range config.Nodes {
 		if node.ID == config.NodeID {
 			continue // skip self
@@ -131,23 +166,33 @@ func handleClusterAddNode(conn net.Conn, command []interface{}, cache *cache.Cac
 
 		// connect to other node and tell it to add node4
 		nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
-		fmt.Printf("[CLUSTER] Notifying %s at %s\n", node.ID, nodeAddr)
+		slog.Debug("Notifying node about addition",
+			"target_node", node.ID,
+			"target_address", nodeAddr,
+			"new_node", newNodeID,
+		)
 
 		err := notifyNodeAboutTopologyChange(nodeAddr, "ADD", newNodeID, newNodeAddr)
 		if err != nil {
-			fmt.Printf("[CLUSTER] Warning: Failed to notify %s: %v\n", node.ID, err)
+			slog.Warn("Failed to notify node",
+				"target_node", node.ID,
+				"error", err,
+			)
 			// continue anyway, not fatal
 		}
 	}
 
 	// also notify the new node to add itself
-	fmt.Printf("[CLUSTER] Notifying new node %s to add itself\n", newNodeID)
+	slog.Debug("Notifying new node to update its topology", "node_id", newNodeID)
 	err = notifyNodeAboutTopologyChange(newNodeAddr, "ADD", newNodeID, newNodeAddr)
 	if err != nil {
-		fmt.Printf("[CLUSTER] Warning: Failed to notify new node: %v\n", err)
+		slog.Warn("Failed to notify new node",
+			"node_id", newNodeID,
+			"error", err,
+		)
 	}
 
-	fmt.Printf("[CLUSTER] Topology broadcast complete\n")
+	slog.Info("Node addition completed", "node_id", newNodeID)
 	conn.Write([]byte(protocol.EncodeSimpleString("OK")))
 }
 
@@ -160,7 +205,7 @@ func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.
 
 	nodeID := command[2].(string)
 
-	fmt.Printf("[CLUSTER] Removing node %s\n", nodeID)
+	slog.Info("Removing node from cluster", "node_id", nodeID)
 
 	// check if node is already in cluster
 	hashRing := nodeState.GetHashRing()
@@ -174,28 +219,39 @@ func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.
 	}
 
 	if !nodeExists {
-		conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("Node %s not found in cluster", nodeID))))
+		slog.Info("Removing node from cluster", "node_id", nodeID)
 		return
 	}
 
 	// get migrator and hash ring
 	migrator := nodeState.GetMigrator()
 	if migrator == nil {
+		slog.Error("Migrator not initialized")
 		conn.Write([]byte(protocol.EncodeError("Cluster is not initialized")))
 		return
 	}
 
 	// trigger the migration process
+	slog.Info("Starting data migration from leaving node", "node_id", nodeID)
+
 	err := migrator.MigrateFromLeavingNode(nodeID)
 	if err != nil {
+		slog.Error("Migration failed",
+			"leaving_node", nodeID,
+			"error", err,
+		)
 		conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("Migration failed: %v", err))))
 		return
 	}
 
+	// log migration 
+	slog.Info("Data migration completed", "leaving_node", nodeID)
+
 	// broadcast to all other nodes in cluster
 	config := nodeState.GetConfig()
 
-	fmt.Printf("[CLUSTER] Broadcasting node removal to other nodes...\n")
+	slog.Info("Broadcasting topology change to cluster", "operation", "REMOVE", "node_id", nodeID)
+
 	for _, node := range config.Nodes {
 		if node.ID == config.NodeID {
 			continue // skip self
@@ -203,11 +259,18 @@ func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.
 
 		// notify other node to remove the leaving node
 		nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
-		fmt.Printf("[CLUSTER] Notifying %s at %s to remove %s\n", node.ID, nodeAddr, nodeID)
+		slog.Debug("Notifying node about removal",
+			"target_node", node.ID,
+			"target_address", nodeAddr,
+			"leaving_node", nodeID,
+		)
 
 		err := notifyNodeAboutTopologyChange(nodeAddr, "REMOVE", nodeID, "")
 		if err != nil {
-			fmt.Printf("[CLUSTER] Warning: Failed to notify %s: %v\n", node.ID, err)
+			slog.Warn("Failed to notify node",
+				"target_node", node.ID,
+				"error", err,
+			)
 			// continue anyway, not fatal
 		}
 	}
@@ -215,14 +278,17 @@ func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.
 	// also notify leaving node to remove itself from its own hash ring
 	leavingNodeAddr := hashRing.GetNodeAddress(nodeID)
 	if leavingNodeAddr != "" {
-		fmt.Printf("[CLUSTER] Notifying leaving node %s to remove itself\n", nodeID)
+		slog.Debug("Notifying leaving node to update its topology", "node_id", nodeID)
 		err = notifyNodeAboutTopologyChange(leavingNodeAddr, "REMOVE", nodeID, "")
 		if err != nil {
-			fmt.Printf("[CLUSTER] Warning: Failed to notify leaving node (may already b e down): %v\n", err)
+			slog.Warn("Failed to notify leaving node (may be down)",
+				"node_id", nodeID,
+				"error", err,
+			)
 		}
 	}
 
-	fmt.Printf("[CLUSTER] Topology broadcast complete\n")
+	slog.Info("Node removal completed", "node_id", nodeID)
 	conn.Write([]byte(protocol.EncodeSimpleString("OK")))
 }
 

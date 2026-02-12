@@ -3,6 +3,7 @@ package cluster
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -96,7 +97,10 @@ func (hc *HealthChecker) RegisterNode(nodeID string, address string) {
 			LastSuccessfulPing: time.Now(),
 			ConsecutiveSuccesses: 1,
 		}
-		fmt.Printf("[HEALTH] Registered node %s at %s\n", nodeID, address)
+		slog.Info("Health checker: node registered",
+			"node_id", nodeID,
+			"address", address,
+		)
 	}
 }
 
@@ -106,21 +110,28 @@ func (hc *HealthChecker) UnregisterNode(nodeID string) {
 	defer hc.mu.Unlock()
 
 	delete(hc.nodeHealth, nodeID)
-	fmt.Printf("[HEALTH] Unregistered node %s\n", nodeID)
+	slog.Info("Health checker: node unregistered", "node_id", nodeID)
 }
 
 // begins the health checking loop
 func (hc *HealthChecker) Start() {
 	hc.wg.Add(1)
 	go hc.healthCheckLoop()
-	fmt.Printf("[HEALTH] Health checker started (interval: %v, threshold: %d, timeout: %v)\n", hc.checkInterval, hc.failureThreshold, hc.timeout)
+	
+	slog.Info("Health checker started",
+		"check_interval", hc.checkInterval,
+		"failure_threshold", hc.failureThreshold,
+		"timeout", hc.timeout,
+		"monitored_nodes", len(hc.nodeHealth),
+	)
 }
 
 // stops the health checker
 func (hc *HealthChecker) Stop() {
 	close(hc.stopCh)
 	hc.wg.Wait()
-	fmt.Printf("[HEALTH] Health checker stopped\n")
+
+	slog.Info("Health checker stopped")
 }
 
 // runs periodic health checks
@@ -167,7 +178,13 @@ func (hc *HealthChecker) checkNode(node *NodeHealth) {
 		node.ConsecutiveSuccesses = 0
 		node.LastFailedPing = time.Now()
 
-		fmt.Printf("[HEALTH] Ping failed for node %s (%s): %v (failures: %d/%d)\n", node.NodeID, node.Address, err, node.ConsecutiveFailures, hc.failureThreshold)
+		slog.Warn("Health check failed",
+			"node_id", node.NodeID,
+			"address", node.Address,
+			"error", err,
+			"consecutive_failures", node.ConsecutiveFailures,
+			"threshold", hc.failureThreshold,
+		)
 
 		// update status based on failure count
 		previousStatus := node.Status
@@ -180,7 +197,12 @@ func (hc *HealthChecker) checkNode(node *NodeHealth) {
 
 		// trigger callback on state transition to dead
 		if previousStatus != NodeStatusDead && node.Status == NodeStatusDead {
-			fmt.Printf("[HEALTH] Node %s marked as DEAD after %d failures\n", node.NodeID, node.ConsecutiveFailures)
+			slog.Error("Node marked as DEAD",
+				"node_id", node.NodeID,
+				"address", node.Address,
+				"consecutive_failures", node.ConsecutiveFailures,
+			)
+
 			if hc.onNodeFailed != nil {
 				// call callback outside of lock to avoid deadlock
 				go hc.onNodeFailed(node.NodeID)
@@ -197,12 +219,20 @@ func (hc *HealthChecker) checkNode(node *NodeHealth) {
 
 		// trigger callback on recovery
 		if previousStatus == NodeStatusDead {
-			fmt.Printf("[HEALTH] Node %s RECOVERED\n", node.NodeID)
+			slog.Info("Node RECOVERED",
+				"node_id", node.NodeID,
+				"address", node.Address,
+				"was_down_for", time.Since(node.LastFailedPing),
+			)
+
 			if hc.onNodeRecovered != nil {
 				go hc.onNodeRecovered(node.NodeID)
 			}
 		} else if previousStatus == NodeStatusSuspected {
-			fmt.Printf("[HEALTH] Node %s back to healthy\n", node.NodeID)
+			slog.Debug("Node health restored",
+				"node_id", node.NodeID,
+				"address", node.Address,
+			)
 		}
 	}
 }

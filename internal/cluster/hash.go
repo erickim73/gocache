@@ -3,6 +3,7 @@ package cluster
 import (
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"sort"
 	"sync"
 
@@ -65,7 +66,11 @@ func (hr *HashRing) AddShard(shardID string) {
 		return hr.hashValues[i] < hr.hashValues[j]
 	})
 
-	fmt.Printf("[HASH RING] Added shard %s with %d virtual nodes\n", shardID, hr.virtualNodes)
+	slog.Info("Hash ring: shard added",
+		"shard_id", shardID,
+		"virtual_nodes", hr.virtualNodes,
+		"total_positions", len(hr.hashValues),
+	)
 
 }
 
@@ -73,6 +78,8 @@ func (hr *HashRing) AddShard(shardID string) {
 func (hr *HashRing) RemoveShard(shardID string) {
 	hr.mu.Lock()
 	defer hr.mu.Unlock()
+
+	removedCount := 0
 
 	for i := 0; i < hr.virtualNodes; i++ {
 		// recreate unique virtual node key and hash it
@@ -86,12 +93,17 @@ func (hr *HashRing) RemoveShard(shardID string) {
 		for idx, val := range hr.hashValues {
 			if val == hashValue {
 				hr.hashValues = append(hr.hashValues[:idx], hr.hashValues[idx + 1:]...)
+				removedCount++
 				break
 			}
 		}
 	}
 
-	fmt.Printf("[HASH RING] Removed shard %s\n", shardID)
+	slog.Info("Hash ring: shard removed",
+		"shard_id", shardID,
+		"virtual_nodes_removed", removedCount,
+		"remaining_positions", len(hr.hashValues),
+	)
 }
 
 // returns the node responsible for the given key
@@ -221,7 +233,11 @@ func (hr *HashRing) SetShardNodes(shardID string, nodeIDs []string) {
 	defer hr.mu.Unlock()
 
 	hr.shardToNodes[shardID] = nodeIDs
-	fmt.Printf("[HASH RING] Set shard %s nodes: %v\n", shardID, nodeIDs)
+	slog.Info("Hash ring: shard nodes configured",
+		"shard_id", shardID,
+		"node_count", len(nodeIDs),
+		"nodes", nodeIDs,
+	)
 }
 
 // returns all nodes in a shard [leader1, follower1, ...]
