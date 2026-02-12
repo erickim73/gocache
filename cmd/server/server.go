@@ -1,9 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"net"
 	"time"
+	"log/slog"
+	"fmt"
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/cluster"
@@ -17,20 +18,21 @@ import (
 
 func startSimpleMode(cfg *config.Config) {
 	// print values to verify
-	fmt.Printf("Starting server with config:\n")
-	fmt.Printf("Port: %d\n", cfg.Port)
-	fmt.Printf("MaxCacheSize: %d\n", cfg.MaxCacheSize)
-	fmt.Printf("AOFFileName: %s\n", cfg.AOFFileName)
-	fmt.Printf("SnapshotFileName: %s\n", cfg.SnapshotFileName)
-	fmt.Printf("SyncPolicy: %s\n", cfg.SyncPolicy)
-	fmt.Printf("SnapshotInterval: %v\n", cfg.SnapshotInterval)
-	fmt.Printf("GrowthFactor: %d\n", cfg.GrowthFactor)
-
+	slog.Info("Starting simple mode server",
+		"port", cfg.Port,
+		"max_cache_size", cfg.MaxCacheSize,
+		"aof_file", cfg.AOFFileName,
+		"snapshot_file", cfg.SnapshotFileName,
+		"sync_policy", cfg.SyncPolicy,
+		"snapshot_interval", cfg.SnapshotInterval,
+		"growth_factor", cfg.GrowthFactor,
+	)
+	
 	// create a cache
 	metricsCollector := metrics.NewCollector()
 	myCache, err := cache.NewCache(cfg.MaxCacheSize, metricsCollector)
 	if err != nil {
-		fmt.Printf("error creating new cache: %v\n", err)
+		slog.Error("Failed to create cache", "error", err)
 		return
 	}
 
@@ -43,7 +45,7 @@ func startSimpleMode(cfg *config.Config) {
 		cfg.GrowthFactor,
 	)
 	if err != nil {
-		fmt.Printf("error creating new aof: %v\n", err)
+		slog.Error("Failed to create AOF", "error", err)
 		return
 	}
 	defer aof.Close()
@@ -51,7 +53,7 @@ func startSimpleMode(cfg *config.Config) {
 	// recovery
 	err = recoverAOF(myCache, aof, cfg.AOFFileName, cfg.SnapshotFileName)
 	if err != nil {
-		fmt.Printf("error recovering from aof: %v\n", err)
+		slog.Error("Failed to recover from AOF", "error", err)
 		return
 	}
 
@@ -63,36 +65,38 @@ func startSimpleMode(cfg *config.Config) {
 	if cfg.Role == "leader" {
 		leader, err = replication.NewLeader(myCache, aof, 0)
 		if err != nil {
-			fmt.Printf("error creating leader: %v\n", err)
+			slog.Error("Failed to create leader", "error", err)
 			return
 		}
 		go leader.Start()
+		slog.Info("Started as leader")
 	} else {
 		id := uuid.NewString()
 
 		follower, err := replication.NewFollower(myCache, aof, cfg.LeaderAddr, id, []config.NodeInfo{}, 0, 0, nodeState) 
 		if err != nil {
-			fmt.Printf("error creating follower: %v\n", err)
+			slog.Error("Failed to create follower", "error", err)
 		}
 		go follower.Start()
+		slog.Info("Started as follower", "leader_address", cfg.LeaderAddr)
 	}
 	
 	// create a tcp listener on a port 
 	address := fmt.Sprintf("0.0.0.0:%d", cfg.Port)
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		fmt.Printf("Error creating listener: %v", err)
+		slog.Error("Failed to create listener", "address", address, "error", err)
 		return
 	}
 	defer listener.Close()
 
-	fmt.Printf("Listening on :%d...\n", cfg.Port)
+	slog.Info("Cache server listening", "address", address)
 
 	for {
 		// accept an incoming connection
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Printf("Error accepting connection: %v", err)
+			slog.Warn("Error accepting connection", "error", err)
 			continue
 		}
 
@@ -105,43 +109,50 @@ func startClusterMode(cfg *config.Config) {
 	// get my node info
 	myNode, err := cfg.GetMyNode()
 	if err != nil {
-		// node not in config -s tart in "pending join" mode
-		fmt.Printf("Node %s not found in initial cluster config\n", cfg.NodeID)
-		fmt.Printf("Starting in PENDING mode -waiting to be added via CLUSTER ADDNODE\n")
+		// node not in config -start in "pending join" mode
+		slog.Info("Node not found in initial cluster config",
+			"node_id", cfg.NodeID, 
+			"mode", "PENDING")     
 		startPendingNode(cfg)
 		return
 	}
 
 	// print values to verify
-	fmt.Printf("Starting server with config:\n")
-	fmt.Printf("MaxCacheSize: %d\n", cfg.MaxCacheSize)
-	fmt.Printf("AOFFileName: %s\n", cfg.AOFFileName)
-	fmt.Printf("SnapshotFileName: %s\n", cfg.SnapshotFileName)
-	fmt.Printf("SyncPolicy: %s\n", cfg.SyncPolicy)
-	fmt.Printf("SnapshotInterval: %v\n", cfg.SnapshotInterval)
-	fmt.Printf("GrowthFactor: %d\n", cfg.GrowthFactor)
-
-	fmt.Printf("My node info:\n")
-	fmt.Printf("  ID: %s\n", myNode.ID)
-	fmt.Printf("  Client port: %d\n", myNode.Port)
-	fmt.Printf("  Replication port: %d\n", myNode.ReplPort)
-	fmt.Printf("  Priority: %d\n", myNode.Priority)
+	slog.Info("Starting cluster mode server",
+		"max_cache_size", cfg.MaxCacheSize,
+		"aof_file", cfg.AOFFileName,
+		"snapshot_file", cfg.SnapshotFileName,
+		"sync_policy", cfg.SyncPolicy,
+		"snapshot_interval", cfg.SnapshotInterval,
+		"growth_factor", cfg.GrowthFactor,
+	)
+	slog.Info("My node info",
+		"id", myNode.ID,
+		"client_port", myNode.Port,
+		"replication_port", myNode.ReplPort,
+		"priority", myNode.Priority,
+	)
 
 	// show cluster topology
-	fmt.Printf("\nCluster topology (%d nodes):\n", len(cfg.Nodes))
+	slog.Info("Cluster topology", "num_nodes", len(cfg.Nodes))
 	for _, node := range cfg.Nodes {
 		marker := ""
 		if node.ID == cfg.NodeID {
 			marker = " <- ME"
 		}
-		fmt.Printf("  - %s (priority: %d, port: %d)%s\n", node.ID, node.Priority, node.Port, marker)
+		slog.Info("Cluster node",
+			"node_id", node.ID,
+			"priority", node.Priority,
+			"port", node.Port,
+			"marker", marker,
+		)
 	}
 
 	// create a cache
 	metricsCollector := metrics.NewCollector()
 	myCache, err := cache.NewCache(cfg.MaxCacheSize, metricsCollector)
 	if err != nil {
-		fmt.Printf("error creating new cache: %v\n", err)
+		slog.Error("Error creating new cache", "error", err)
 		return
 	}
 
@@ -154,7 +165,7 @@ func startClusterMode(cfg *config.Config) {
 		cfg.GrowthFactor,
 	)
 	if err != nil {
-		fmt.Printf("error creating new aof: %v\n", err)
+		slog.Error("Error creating new AOF", "error", err)
 		return
 	}
 	defer aof.Close()
@@ -162,42 +173,46 @@ func startClusterMode(cfg *config.Config) {
 	// recovery
 	err = recoverAOF(myCache, aof, cfg.AOFFileName, cfg.SnapshotFileName)
 	if err != nil {
-		fmt.Printf("error recovering from aof: %v\n", err)
+		slog.Error("Error recovering from AOF", "error", err)
 		return
 	}
 
 	// create hash ring for key distribution
-	fmt.Println("\n=== Initializing Hash Ring for Key Distribution === ")
+	slog.Info("Initializing Hash Ring for Key Distribution")
 	hashRing := cluster.NewHashRing(150)
 
 	// add all cluster nodes to hash ring
 	for _, shard := range cfg.Shards {
 		hashRing.AddShard(shard.ShardID)
-		fmt.Printf("  ✓ Added shard to hash ring: %s\n", shard.ShardID)
+		slog.Info("Added shard to hash ring", "shard_id", shard.ShardID)
 
 		// map shard to its nodes [leader, follower1, follower2...]
 		nodes := []string{shard.LeaderID}
 		nodes = append(nodes, shard.Followers...)
 		hashRing.SetShardNodes(shard.ShardID, nodes)
-		fmt.Printf("    Shard %s nodes: %v\n", shard.ShardID, nodes)
+		slog.Info("Shard nodes configured",
+			"shard_id", shard.ShardID,
+			"nodes", nodes,
+		)
 	}
 
-	fmt.Printf("✓ Hash ring initialized with %d nodes\n", len(cfg.Nodes))
-	fmt.Printf("  Each node has 150 virtual nodes for balanced distribution\n")
-	fmt.Println("==========================================")
+	slog.Info("Hash ring initialized",
+		"num_nodes", len(cfg.Nodes),
+		"virtual_nodes_per_node", 150,
+	)
 
 	// determine initial role based on priority
 	// highest priority node starts as leader
 	if cfg.IsShardLeader() {
-		fmt.Printf("\n I have highest priority - starting as leader\n\n")
+		slog.Info("Starting as leader", "reason", "highest priority in shard")
 		startAsLeader(myNode, myCache, aof, cfg, hashRing)
 	} else {
-		fmt.Printf("\n I am a shared follower - starting as follower")
+		slog.Info("Starting as follower", "reason", "not highest priority in shard")
 
 		// find shard's leader
 		myShard, err := cfg.GetShardForNode(cfg.NodeID)
 		if err != nil {
-			fmt.Printf("Error: Cannot find my shard: %v\n", err)
+			slog.Error("Cannot find my shard", "error", err)
 			return
 		}
 
@@ -211,12 +226,15 @@ func startClusterMode(cfg *config.Config) {
 		}
 
 		if leaderNode == nil {
-			fmt.Printf("Error: Cannot find shard leader node info\n")
+			slog.Error("Cannot find shard leader node info")
 			return
 		}
 
 		leaderAddr := fmt.Sprintf("%s:%d", leaderNode.Host, leaderNode.ReplPort)
-		fmt.Printf("Connecting to shard leader %s at: %s\n\n", leaderNode.ID, leaderAddr)
+		slog.Info("Connecting to shard leader",
+			"leader_id", leaderNode.ID,
+			"leader_addr", leaderAddr,
+		)
 
 		startAsFollower(myNode, myCache, aof, leaderAddr, cfg.Nodes, cfg, hashRing)
 	}
@@ -227,34 +245,35 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 	// create node state
 	nodeState, err := server.NewNodeState("leader", nil, "")
 	if err != nil {
-		fmt.Printf("error creating node state: %v\n", err)
+		slog.Error("Error creating node state", "error", err)
 		return
 	}	
 
 	// set cluster components in node state for routing
 	nodeState.SetConfig(cfg)
 	nodeState.SetHashRing(hashRing)
-	fmt.Println("✓ Cluster routing enabled (hash ring + config)")
+	slog.Info("Cluster routing enabled", "components", "hash_ring + config")
 
 	// set node addresses in hash ring
-	fmt.Println("\n=== Setting Node Addresses in Hash Ring ===")
+	slog.Info("Setting Node Addresses in Hash Ring")
 	for _, node := range cfg.Nodes {
 		nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
 		hashRing.SetNodeAddress(node.ID, nodeAddr)
-		fmt.Printf("  ✓ Set address for %s: %s\n", node.ID, nodeAddr)
+		slog.Info("Set node address",
+			"node_id", node.ID,
+			"address", nodeAddr,
+		)
 	}
-	fmt.Println("========================================")
 
 	// create migrator and set it in node state
-	fmt.Println("\n=== Initializing Migrator ===")
+	slog.Info("Initializing Migrator")
 	migrator := cluster.NewMigrator(myCache, hashRing)
 	nodeState.SetMigrator(migrator)
 	nodeState.SetCache(myCache)
-	fmt.Println("✓ Migrator initialized")
-	fmt.Println("=============================")
+	slog.Info("Migrator initialized")
 
 	// create and configure health check
-	fmt.Println("\n=== Initializing Health Checker (leader) ===")
+	slog.Info("Initializing Health Checker", "role", "leader")
 	healthChecker := cluster.NewHealthChecker(
 		hashRing, 
 		5 * time.Second, // check every 5 sec
@@ -269,20 +288,23 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 		// don't health check node itself
 		if node.ID != cfg.NodeID {
 			healthChecker.RegisterNode(node.ID, nodeAddr)
-			fmt.Printf("  ✓ Monitoring node %s at %s\n", node.ID, nodeAddr)
+			slog.Info("Monitoring node",
+				"node_id", node.ID,
+				"address", nodeAddr,
+			)
 		}
 	}
 
 	// set callbacks for node failure/recovery
 	healthChecker.SetCallbacks(
 		func(failedNodeID string) {
-			fmt.Printf("[CLUSTER] Node %s failed! Removing from hash ring...\n", failedNodeID)
+			slog.Warn("Node failed, removing from hash ring", "node_id", failedNodeID)
 			hashRing.RemoveShard(failedNodeID)
 			hashRing.SetNodeAddress(failedNodeID, "")
-			fmt.Printf("[CLUSTER] Hash ring updated - node %s removed\n", failedNodeID)
+			slog.Info("Hash ring updated after node failure", "removed_node", failedNodeID)
 		},
 		func(recoveredNodeID string) {
-			fmt.Printf("[CLUSTER] Node %s recovered! Adding back to hash ring...\n", recoveredNodeID)
+			slog.Info("Node recovered, adding back to hash ring", "node_id", recoveredNodeID)
 
 			// find the node's address from config
 			for _, node := range cfg.Nodes {
@@ -290,7 +312,10 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 					nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
 					hashRing.AddShard(recoveredNodeID)
 					hashRing.SetNodeAddress(recoveredNodeID, nodeAddr)
-					fmt.Printf("[CLUSTER] Hash ring updated - node %s added back\n", recoveredNodeID)
+					slog.Info("Hash ring updated after node recovery",
+						"recovered_node", recoveredNodeID,
+						"address", nodeAddr,
+					)
 				}
 			}
 		},
@@ -300,15 +325,12 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 
 	// start health checking
 	healthChecker.Start()
-	fmt.Println("✓ Health checker started")
-	fmt.Println("====================================")
-
-	fmt.Println("✓ Cluster routing enabled (hash ring + config)")
+	slog.Info("Health checker started")
 
 	// create leader
 	leader, err := replication.NewLeader(myCache, aof, myNode.ReplPort) 
 	if err != nil {
-		fmt.Printf("error creating leader: %v\n", err)
+		slog.Error("Error creating leader", "error", err)
 		return
 	}
 
@@ -317,15 +339,16 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 
 	go leader.Start()
 
-	fmt.Println("\n=== Setting Up Shard Replication ===")
+	slog.Info("Setting Up Shard Replication")
 	myShard, err := cfg.GetShardForNode(cfg.NodeID)
 	if err == nil && myShard.LeaderID == cfg.NodeID {
-		fmt.Printf("I am leader of shard %s\n", myShard.ShardID)
-		fmt.Printf("Waiting for followers: %v\n", myShard.Followers)
+		slog.Info("Leading shard",
+			"shard_id", myShard.ShardID,
+			"followers", myShard.Followers,
+		)
 	} else if err != nil {
-		fmt.Printf("Warning: Could not determine my shard: %v\n", err)
+		slog.Warn("Could not determine my shard", "error", err)
 	}
-	fmt.Println("===================================")
 
 	// start client listener
 	startClientListener(myNode.Port, myCache, aof, nodeState)
@@ -336,7 +359,7 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	// create node state
 	nodeState, err := server.NewNodeState("follower", nil, leaderAddr)
 	if err != nil {
-		fmt.Printf("error creating node state: %v\n", err)
+		slog.Error("Error creating node state", "error", err)
 		return
 	}
 
@@ -345,26 +368,27 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	nodeState.SetHashRing(hashRing)
 
 	// set node addresses in hash ring
-	fmt.Println("\n=== Setting Node Addresses in Hash Ring ===")
+	slog.Info("Setting Node Addresses in Hash Ring")
 	for _, node := range cfg.Nodes {
 		nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
 		hashRing.SetNodeAddress(node.ID, nodeAddr)
-		fmt.Printf("  ✓ Set address for %s: %s\n", node.ID, nodeAddr)
+		slog.Info("Set node address",
+			"node_id", node.ID,
+			"address", nodeAddr,
+		)
 	}
-	fmt.Println("========================================")
 
 	// create migrator and set it in node state
-	fmt.Println("\n=== Initializing Migrator ===")
+	slog.Info("Initializing Migrator")
 	migrator := cluster.NewMigrator(myCache, hashRing)
 	nodeState.SetMigrator(migrator)
 	nodeState.SetCache(myCache)
-	fmt.Println("✓ Migrator initialized")
-	fmt.Println("=============================")
+	slog.Info("Migrator initialized")
 
-	fmt.Println("✓ Cluster routing enabled (hash ring + config)")
+	slog.Info("Cluster routing enabled", "components", "hash_ring + config")
 
 	// create and configure health check
-	fmt.Println("\n=== Initializing Health Checker (follower) ===")
+	slog.Info("Initializing Health Checker", "role", "follower")
 	healthChecker := cluster.NewHealthChecker(
 		hashRing, 
 		5 * time.Second, // check every 5 sec
@@ -382,17 +406,26 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 		// skip self and leader
 		if node.ID != cfg.NodeID && node.ID != leaderNode.ID {
 			healthChecker.RegisterNode(node.ID, nodeAddr)
-			fmt.Printf("  ✓ Monitoring node %s at %s\n", node.ID, nodeAddr)
+			slog.Info("Monitoring node",
+				"node_id", node.ID,
+				"address", nodeAddr,
+			)
 		}
 	}
 
 	// follower callbacks for node failure/recovery
 	healthChecker.SetCallbacks(
 		func(failedNodeID string) {
-			fmt.Printf("[CLUSTER][FOLLOWER] Detected node %s failure\n", failedNodeID)
+			slog.Warn("Detected node failure",
+				"role", "follower",
+				"failed_node", failedNodeID,
+			)
 		},
 		func(recoveredNodeID string) {
-			fmt.Printf("[CLUSTER][FOLLOWER] Detected node %s recovery\n", recoveredNodeID)
+			slog.Info("Detected node recovery",
+				"role", "follower",
+				"recovered_node", recoveredNodeID,
+			)
 		},
 	)
 
@@ -400,16 +433,17 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 
 	// start health checking
 	healthChecker.Start()
-	fmt.Println("✓ Health checker started")
-	fmt.Println("====================================")
+	slog.Info("Health checker started")
 
-	fmt.Println("\n=== Setting Up Shard Replication ===")
+	slog.Info("Setting Up Shard Replication")
 	myShard, err := cfg.GetShardForNode(cfg.NodeID)
 	if err != nil {
-		fmt.Printf("Error finding my shard: %v\n", err)
+		slog.Error("Error finding my shard", "error", err)
 	} else {
-		fmt.Printf("I am follower in shard %s\n", myShard.ShardID)
-		fmt.Printf("My shard leader: %s\n", myShard.LeaderID)
+		slog.Info("Follower in shard",
+			"shard_id", myShard.ShardID,
+			"shard_leader", myShard.LeaderID,
+		)
 	}
 
 	// find my shard leader's replication address
@@ -424,12 +458,11 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	}
 
 	if shardLeaderReplAddr == "" {
-		fmt.Printf("Warning: Could not find shard leader replication address, using default\n")
+		slog.Warn("Could not find shard leader replication address, using fallback")
 		shardLeaderReplAddr = leaderAddr // fallback
 	}
 
-	fmt.Printf("Connecting to shard leader at %s\n", shardLeaderReplAddr)
-	fmt.Println("===========================")
+	slog.Info("Connecting to shard leader", "address", shardLeaderReplAddr)
 
 	// find leader's client address for forwarding
 	var leaderClientAddr string
@@ -447,7 +480,7 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	// create follower
 	follower, err := replication.NewFollower(myCache, aof, shardLeaderReplAddr, myNode.ID, clusterNodes, myNode.Priority, myNode.ReplPort, nodeState) 
 	if err != nil {
-		fmt.Printf("error creating follower: %v\n", err)
+		slog.Error("Error creating follower", "error", err)
 		return
 	}
 	go follower.Start()
@@ -461,17 +494,17 @@ func startClientListener(port int, myCache *cache.Cache, aof *persistence.AOF, n
 	address := fmt.Sprintf("0.0.0.0:%d", port)
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		fmt.Printf("Error creating listener: %v", err)
+		slog.Error("Error creating listener", "error", err, "address", address)
 		return
 	}
 	defer listener.Close()
 
-	fmt.Printf("Listening for clients on :%d...\n", port)
+	slog.Info("Listening for clients", "port", port)
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Printf("Error accepting connection: %v", err)
+			slog.Warn("Error accepting connection", "error", err)
 			continue
 		}
 		go handleConnection(conn, myCache, aof, nodeState)
@@ -480,26 +513,26 @@ func startClientListener(port int, myCache *cache.Cache, aof *persistence.AOF, n
 
 // helper function to add this pending node
 func startPendingNode(cfg *config.Config) {
-	fmt.Printf("Starting server with config:\n")
-	fmt.Printf("MaxCacheSize: %d\n", cfg.MaxCacheSize)
-	fmt.Printf("AOFFileName: %s\n", cfg.AOFFileName)
-	fmt.Printf("SnapshotFileName: %s\n", cfg.SnapshotFileName)
-
-	fmt.Printf("\nNodeID: %s\n", cfg.NodeID)
-	fmt.Printf("Status: PENDING - waiting to join cluster\n")
+	slog.Info("Starting server with config",
+		"max_cache_size", cfg.MaxCacheSize,
+		"aof_file", cfg.AOFFileName,
+		"snapshot_file", cfg.SnapshotFileName,
+		"node_id", cfg.NodeID,
+		"status", "PENDING - waiting to join cluster",
+	)
 
 	// create cache
 	metricsCollector := metrics.NewCollector()
 	myCache, err := cache.NewCache(cfg.MaxCacheSize, metricsCollector)
 	if err != nil {
-		fmt.Printf("error creating new cache: %v\n", err)
+		slog.Error("Error creating new cache", "error", err)
 		return
 	}
 
 	// create AOF
 	aof, err := persistence.NewAOF(cfg.AOFFileName, cfg.SnapshotFileName, cfg.GetSyncPolicy(), myCache, cfg.GrowthFactor)
 	if err != nil {
-		fmt.Printf("error creating new aof: %v\n", err)
+		slog.Error("Error creating new AOF", "error", err)
 		return
 	}
 	defer aof.Close()
@@ -507,12 +540,12 @@ func startPendingNode(cfg *config.Config) {
 	// recovery
 	err = recoverAOF(myCache, aof, cfg.AOFFileName, cfg.SnapshotFileName)
 	if err != nil {
-		fmt.Printf("error recovering from aof: %v\n", err)
+		slog.Error("Error recovering from AOF", "error", err)
 		return
 	}
 
 	// create hash ring with just the known nodes
-	fmt.Println("\n=== Initializing Hash Ring ===")
+	slog.Info("Initializing Hash Ring")
 	hashRing := cluster.NewHashRing(150)
 
 	// add nodes from config
@@ -520,15 +553,17 @@ func startPendingNode(cfg *config.Config) {
 		hashRing.AddShard(node.ID)
 		nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
 		hashRing.SetNodeAddress(node.ID, nodeAddr)
-		fmt.Printf("  ✓ Added node: %s at %s\n", node.ID, nodeAddr)
+		slog.Info("Added node to hash ring",
+			"node_id", node.ID,
+			"address", nodeAddr,
+		)
 	}
-	fmt.Printf("✓ Hash ring initialized with %d nodes\n", len(cfg.Nodes))
-	fmt.Println("=========================")
+	slog.Info("Hash ring initialized", "num_nodes", len(cfg.Nodes))
 
 	// create node state (no replication yet)
 	nodeState, err := server.NewNodeState("pending", nil, "")
 	if err != nil {
-		fmt.Printf("error creating node state: %v\n", err)
+		slog.Error("Error creating node state", "error", err)
 		return
 	}
 
@@ -541,7 +576,7 @@ func startPendingNode(cfg *config.Config) {
 	nodeState.SetMigrator(migrator)
 	nodeState.SetCache(myCache)
 
-	fmt.Println("✓ Node ready to join cluster")
+	slog.Info("Node ready to join cluster")
 
 	// determine port - use first available port or default
 	port := 8382

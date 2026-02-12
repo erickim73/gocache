@@ -7,6 +7,7 @@ import (
 	"net"
 	"strconv"
 	"time"
+	"log/slog"
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/persistence"
@@ -37,10 +38,12 @@ func requiresLeader(operation string) bool {
 func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, nodeState *server.NodeState) {
 	defer conn.Close()
 
-	// increment active connections when client connects
+	// track connections
 	cache.GetMetrics().IncrementActiveConnections()
-	// decrement when client disconnects
 	defer cache.GetMetrics().DecrementActiveConnections()
+
+	// log new connection
+	remoteAddr := conn.RemoteAddr().String()
 
 	// read from client
 	reader := bufio.NewReader(conn)
@@ -50,13 +53,13 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 			if err == io.EOF {
 				return
 			}
-			fmt.Printf("Connection error: %v\n", err)
+			slog.Warn("Connection error", "address", remoteAddr, "error", err)
 			return
 		}
 
 		resultSlice, ok := result.([]interface{})
 		if !ok {
-			fmt.Println("Error: result is not a slice")
+			slog.Warn("Invalid command format", "address", remoteAddr)
 			return
 		}
 		command := resultSlice[0]
@@ -89,7 +92,12 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 				// key belongs to another node - return MOVED
 				msg := fmt.Sprintf("-MOVED %s %s\r\n", targetNodeID, targetAddr)
 				conn.Write([]byte(msg))
-				fmt.Printf("[ROUTING] key '%s' belongs to %s (%s), returning MOVED\n", key, targetNodeID, targetAddr)
+				slog.Debug("Routing redirect - key belongs to different node",
+					"key", key,
+					"target_node", targetNodeID,
+					"target_addr", targetAddr,
+					"action", "returning MOVED",
+				)
 
 				// record latency for forwarded requests
 				duration := time.Since(startTime)
@@ -99,9 +107,15 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 
 			// key belongs to this node or we can handle reads, log and continue
 			if isWrite {
-				fmt.Printf("[ROUTING] write for key '%s' - handling locally (I'm the leader)\n", key)
+				slog.Debug("Routing write locally",
+					"key", key,
+					"reason", "this node is the leader",
+				)
 			} else {
-				fmt.Printf("[ROUTING] read for key '%s' - handling locally (replicated data)\n", key)
+				slog.Debug("Routing read locally",
+					"key", key,
+					"reason", "replicated data available",
+				)
 			}
 		}
 
@@ -186,7 +200,11 @@ func handleSet(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, aof
 	if leader != nil {
 		err := leader.Replicate(replication.OpSet, key, value, ttlSeconds)
 		if err != nil {
-			fmt.Printf("Error replicating SET command: %v\n", err)
+			slog.Error("Replication failed",
+				"operation", "SET",
+				"key", key,
+				"error", err,
+			)
 		}
 	}
 	
@@ -195,7 +213,11 @@ func handleSet(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, aof
 	aofCommand := protocol.EncodeArray([]interface{}{"SET", key, value, ttlSecondsStr})
 	err := aof.Append(aofCommand)
 	if err != nil {
-		fmt.Printf("Failed to write to AOF: %v\n", err)
+		slog.Error("AOF write failed",
+			"operation", "SET",
+			"key", key,
+			"error", err,
+		)
 	}
 
 	conn.Write([]byte(protocol.EncodeSimpleString("OK")))
@@ -232,14 +254,21 @@ func handleDelete(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, 
 	if leader != nil {
 		err := leader.Replicate(replication.OpDelete, key, "", 0)
 		if err != nil {
-			fmt.Printf("Error replicating DEL command from leader to follower: %v\n", err)
+			slog.Error("Error replicating DEL command from leader to follower",
+				"error", err,
+				"key", key,
+			)
 		}
 	}
 
 	aofCommand := protocol.EncodeArray([]interface{}{"DEL", key})
 	err := aof.Append(aofCommand)
 	if err != nil {
-		fmt.Printf("Failed to write to AOF: %v\n", err)
+		slog.Error("Failed to write to AOF",
+			"error", err,
+			"command", "DEL",
+			"key", key,
+		)
 	}
 
 	conn.Write([]byte(protocol.EncodeSimpleString("OK")))

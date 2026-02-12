@@ -1,15 +1,18 @@
 package main
 
 import (
-	"fmt"
 	"time"
 	"net/http"
+	"log/slog"
+	"fmt"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // creates and starts an http server that exposes prometheus metrics
 func StartMetricsServer(port int) {
+	slog.Info("Starting metrics server", "port", port)
+
 	// create new http mux (router) for metrics server. avoids conflicts with any other http servers that might be running
 	mux := http.NewServeMux()
 
@@ -76,18 +79,20 @@ func StartMetricsServer(port int) {
 	}
 
 	// log startup message
-	fmt.Printf("\n=== Metrics Server Starting ===\n")
-	fmt.Printf("Metrics endpoint: http://0.0.0.0:%d/metrics\n", port)
-	fmt.Printf("Health endpoint:  http://0.0.0.0:%d/health\n", port)
-	fmt.Printf("Web UI:           http://0.0.0.0:%d/\n", port)
-	fmt.Printf("==============================\n\n")
+	slog.Info("Metrics server ready",
+		"metrics_url", fmt.Sprintf("http://0.0.0.0:%d/metrics", port),
+		"health_url", fmt.Sprintf("http://0.0.0.0:%d/health", port),
+		"web_ui", fmt.Sprintf("http://0.0.0.0:%d/", port),
+	)
 
 	// start server. ListenAndServe blocks until server stops or encounters an error
 	err := server.ListenAndServe()
 
 	// server stopped
 	if err != nil && err != http.ErrServerClosed {
-		fmt.Printf("ERROR: Metrics server failed: %v\n", err)
-		fmt.Printf("Metrics will not be available. Cache server continues running.\n")
+		slog.Error("Metrics server failed",
+			"error", err,
+			"port", port,
+		)	
 	}
 }
