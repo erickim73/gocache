@@ -2,7 +2,10 @@
 node_id: "node4"
 port: 8382
 repl_port: 9382
+
+# metrics and logging
 metrics_port: 9093
+log_level: "info"
 
 # cache settings
 max_cache_size: 1000
