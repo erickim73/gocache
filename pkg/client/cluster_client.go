@@ -1,7 +1,7 @@
 package client
 
 import (
-	// "fmt"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
