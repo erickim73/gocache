@@ -3,6 +3,7 @@ package cluster
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"net"
 	"time"
 
@@ -36,7 +37,11 @@ func TransferKeys(targetAddr string, keys []string, values map[string]string) er
 		if err != nil {
 			failCount++
 			// log error but continue with other keys
-			fmt.Printf("[TRANSFER] Failed to send key %s: %v\n", key, err)
+			slog.Warn("Failed to send key during transfer",
+				"key", key,
+				"target", targetAddr,
+				"error", err,
+			)
 			continue
 		}
 
@@ -47,14 +52,22 @@ func TransferKeys(targetAddr string, keys []string, values map[string]string) er
 		response, err := protocol.Parse(reader)
 		if err != nil {
 			failCount++
-			fmt.Printf("[TRANSFER] Failed to read response for key %s: %v\n", key, err)
+			slog.Warn("Failed to read response during transfer",
+				"key", key,
+				"target", targetAddr,
+				"error", err,
+			)
 			continue
 		}
 
 		// verify the response is "OK"
 		if !isOKResponse(response) {
 			failCount++
-			fmt.Printf("[TRANSFER] Target rejected key %s: %v\n", key, response)
+			slog.Warn("Target rejected key",
+				"key", key,
+				"target", targetAddr,
+				"response", response,
+			)
 			continue
 		}
 
@@ -62,7 +75,12 @@ func TransferKeys(targetAddr string, keys []string, values map[string]string) er
 	}
 
 	// log final statistics
-	fmt.Printf("[TRANSFER] Completed: %d succeeded, %d failed out of %d keys\n", successCount, failCount, len(keys))
+	slog.Info("Transfer batch completed",
+		"target", targetAddr,
+		"succeeded", successCount,
+		"failed", failCount,
+		"total", len(keys),
+	)
 
 	// fail the entire transfer if any keys failed. this prevents data loss
 	if failCount > 0 {
@@ -78,28 +96,50 @@ func TransferKeysWithRetry(targetAddr string, keys []string, values map[string]s
 
 	// try up to maxRetries times
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		fmt.Printf("[TRANSFER] Attempt %d/%d to transfer %d keys to %s\n", attempt, maxRetries, len(keys), targetAddr)
+		slog.Info("Transfer attempt starting",
+			"attempt", attempt,
+			"max_retries", maxRetries,
+			"key_count", len(keys),
+			"target", targetAddr,
+		)
 
 		// attempt the transfer
 		err := TransferKeys(targetAddr, keys, values)
 
 		if err == nil {
-			fmt.Printf("[TRANSFER] Transfer succeded on attempt %d\n", attempt)
+			slog.Info("Transfer succeeded",
+				"attempt", attempt,
+				"target", targetAddr,
+			)
 			return nil
 		}
 
 		// failed - log and potentially retry
 		lastErr = err
-		fmt.Printf("[TRANSFER] Attempt %d failed: %v\n", attempt, err)
+		slog.Warn("Transfer attempt failed",
+			"attempt", attempt,
+			"max_retries", maxRetries,
+			"target", targetAddr,
+			"error", err,
+		)
 
 		// don't sleep after the last attempt
 		if attempt < maxRetries {
 			// exponential backoff
 			backoff := time.Duration(attempt) * time.Second
-			fmt.Printf("[TRANSFER] Retrying in %v...\n", backoff)
+			slog.Debug("Retrying after backoff",
+				"backoff_seconds", backoff.Seconds(),
+				"next_attempt", attempt+1,
+			)
 			time.Sleep(backoff)
 		}
 	}
+
+	slog.Error("Transfer failed after all retries",
+		"max_retries", maxRetries,
+		"target", targetAddr,
+		"error", lastErr,
+	)
 
 	return fmt.Errorf("transfer failed after %d attempts: %v", maxRetries, lastErr)
 }
@@ -110,11 +150,21 @@ func TransferKeysBatch(targetAddr string, keys []string, values map[string]strin
 	totalKeys := len(keys)
 	numBatches := (totalKeys + batchSize - 1) / batchSize // ceiling division
 
-	fmt.Printf("[TRANSFER] Splitting %d keys into %d batches of %d\n", totalKeys, numBatches, batchSize)
+	slog.Info("Starting batched transfer",
+		"target", targetAddr,
+		"total_keys", totalKeys,
+		"batch_count", numBatches,
+		"batch_size", batchSize,
+	)
 
 	// create connection once for all batches
 	conn, err := net.DialTimeout("tcp", targetAddr, 5 * time.Second)
 	if err != nil {
+		slog.Error("Failed to connect for batch transfer",
+			"target", targetAddr,
+			"error", err,
+		)
+
 		return fmt.Errorf("failed to connect to %s: %v", targetAddr, err)
 	}
 	defer conn.Close()
@@ -139,12 +189,23 @@ func TransferKeysBatch(targetAddr string, keys []string, values map[string]strin
 			batchValues[key] = values[key]
 		}
 
-		fmt.Printf("[TRANSFER] Batch %d/%d: transferring keys %d-%d\n", i + 1, numBatches, start, end - 1)
+		slog.Debug("Processing batch",
+			"batch_number", i+1,
+			"total_batches", numBatches,
+			"key_range", fmt.Sprintf("%d-%d", start, end-1),
+			"batch_size", len(batchKeys),
+		)
 
 		// transfer this batch with retries
 		err := transferKeysOnConnection(conn, reader, batchKeys, batchValues)
 		if err != nil {
 			// if any batch fails, stop migration
+			slog.Error("Batch transfer failed",
+				"batch_number", i+1,
+				"total_batches", numBatches,
+				"error", err,
+			)
+
 			return fmt.Errorf("batch %d failed: %v", i + 1, err)
 		}
 
@@ -153,7 +214,12 @@ func TransferKeysBatch(targetAddr string, keys []string, values map[string]strin
 		}
 	}
 
-	fmt.Printf("[TRANSFER] All %d batches completed successfully\n", numBatches)
+	slog.Info("All batches transferred successfully",
+		"target", targetAddr,
+		"batch_count", numBatches,
+		"total_keys", totalKeys,
+	)
+
 	return nil
 }
 
@@ -169,7 +235,10 @@ func transferKeysOnConnection(conn net.Conn, reader *bufio.Reader, keys []string
 		_, err := conn.Write([]byte(cmd))
 		if err != nil {
 			failCount++
-			fmt.Printf("[TRANSFER] Failed to send key %s: %v\n", key, err)
+			slog.Warn("Failed to send key on existing connection",
+				"key", key,
+				"error", err,
+			)
 			continue
 		}
 
@@ -177,20 +246,30 @@ func transferKeysOnConnection(conn net.Conn, reader *bufio.Reader, keys []string
 		response, err := protocol.Parse(reader)
 		if err != nil {
 			failCount++
-			fmt.Printf("[TRANSFER] Failed to read response for key %s: %v\n", key, err)
+			slog.Warn("Failed to read response on existing connection",
+				"key", key,
+				"error", err,
+			)
 			continue
 		}
 
 		if !isOKResponse(response) {
 			failCount++
-			fmt.Printf("[TRANSFER] Target rejected key %s: %v\n", key, response)
+			slog.Warn("Key rejected by target",
+				"key", key,
+				"response", response,
+			)
 			continue
 		}
 
 		successCount++
 	}
 
-	fmt.Printf("[TRANSFER] Batch completed: %d succeded, %d failed out of %d keys\n", successCount, failCount, len(keys))
+	slog.Debug("Connection batch completed",
+		"succeeded", successCount,
+		"failed", failCount,
+		"total", len(keys),
+	)
 
 	if failCount > 0 {
 		return fmt.Errorf("transfer incomplete: %d keys failed", failCount)
@@ -214,9 +293,19 @@ func isOKResponse(response interface{}) bool {
 
 // checks that keys were successfully transferred
 func VerifyTransfer(targetAddr string, keys []string) error {
+	slog.Debug("Starting transfer verification",
+		"target", targetAddr,
+		"key_count", len(keys),
+	)
+	
 	// connect to target
 	conn, err := net.DialTimeout("tcp", targetAddr, 5 * time.Second)
 	if err != nil {
+		slog.Error("Failed to connect for verification",
+			"target", targetAddr,
+			"error", err,
+		)
+		
 		return fmt.Errorf("failed to connect for verification: %v", err)
 	}
 	defer conn.Close()
@@ -229,6 +318,12 @@ func VerifyTransfer(targetAddr string, keys []string) error {
 		cmd := protocol.EncodeArray([]interface{}{"GET", key})
 		_, err := conn.Write([]byte(cmd))
 		if err != nil {
+			slog.Error("Verification write failed",
+				"key", key,
+				"target", targetAddr,
+				"error", err,
+			)
+
 			return fmt.Errorf("verification failed for key %s: %v", key, err)
 		}
 
@@ -236,15 +331,29 @@ func VerifyTransfer(targetAddr string, keys []string) error {
 		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 		response, err := protocol.Parse(reader)
 		if err != nil {
+			slog.Error("Verification read failed",
+				"key", key,
+				"target", targetAddr,
+				"error", err,
+			)
+
 			return fmt.Errorf("verification read failed for key %s: %v", key, err)
 		}
 
 		// nil response means key doesn't exist on target
 		if response == nil {
+			slog.Error("Key not found on target during verification",
+				"key", key,
+				"target", targetAddr,
+			)
+
 			return fmt.Errorf("key %s not found on target", key)
 		}
 	}
 
-	fmt.Printf("[TRANSFER] Verification passed: all %d keys exist on target\n", len(keys))
+	slog.Info("Transfer verification passed",
+		"target", targetAddr,
+		"verified_keys", len(keys),
+	)
 	return nil
 }

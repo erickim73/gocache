@@ -3,6 +3,7 @@ package client
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"log"
 	"net"
 	"os"
@@ -27,6 +28,7 @@ type Client struct {
 func NewClient(address string) (*Client, error) {
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
+		slog.Error("Failed to connect to server", "address", address, "error", err)
 		return nil, fmt.Errorf("failed to connect: %v", err)
 	}
 
@@ -59,17 +61,20 @@ func (c *Client) executeCommandWithRedirect(command []interface{}) (string, erro
 		// send command
 		_, err := c.writer.WriteString(encoded)
 		if err != nil {
+			slog.Error("Failed to write command", "error", err)
 			return "", fmt.Errorf("failed to write command: %v", err)
 		}
 
 		err = c.writer.Flush()
 		if err != nil {
+			slog.Error("Failed to flush writer", "error", err)
 			return "", fmt.Errorf("failed to flush: %v", err)
 		}
 
 		// read response
 		response, err := c.readResponse()
 		if err != nil {
+			slog.Error("Failed to read response", "error", err)
 			return "", fmt.Errorf("failed to read response: %v", err)
 		}
 
@@ -78,6 +83,7 @@ func (c *Client) executeCommandWithRedirect(command []interface{}) (string, erro
 			// parse redirect
 			redirect, err := protocol.ParseRedirect(response)
 			if err != nil {
+				slog.Error("Failed to parse redirect", "error", err)
 				return "", fmt.Errorf("failed to parse redirect: %v", err)
 			}
 
@@ -85,9 +91,10 @@ func (c *Client) executeCommandWithRedirect(command []interface{}) (string, erro
 			c.Close()
 
 			// connect to leader
-			fmt.Printf("Redirecting to leader at %s...\n", redirect.Address())
+			slog.Info("Redirecting to leader", "address", redirect.Address(), "redirect_count", redirectCount+1)
 			newConn, err := net.Dial("tcp", redirect.Address())
 			if err != nil {
+				slog.Error("Failed to connect to leader", "address", redirect.Address(), "error", err)
 				return "", fmt.Errorf("failed to connect to leader: %v", err)
 			}
 
@@ -104,6 +111,7 @@ func (c *Client) executeCommandWithRedirect(command []interface{}) (string, erro
 		return response, nil
 	}
 
+	slog.Error("Too many redirects", "max_redirects", MaxRedirects, "redirect_count", redirectCount)
 	return "", fmt.Errorf("too many redirects (%d)", MaxRedirects)
 }
 
@@ -204,18 +212,21 @@ func (c *Client) SendCommand(args ...string) (string, error) {
 
 	_, err := c.writer.WriteString(cmd)
 	if err != nil {
+		slog.Error("Failed to write command", "command", args, "error", err)
 		return "", fmt.Errorf("failed to write command: %v", err)
 	}
 
 	// flush the writer to ensure data is sent
 	err = c.writer.Flush()
 	if err != nil {
+		slog.Error("Failed to flush writer", "error", err)
 		return "", fmt.Errorf("failed to flush: %v", err)
 	}
 
 	// read the response
 	response, err := protocol.Parse(c.reader)
 	if err != nil {
+		slog.Error("Failed to read response", "error", err)
 		return "", fmt.Errorf("failed to read response: %v", err) 
 	}
 

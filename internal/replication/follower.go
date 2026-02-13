@@ -3,6 +3,7 @@ package replication
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"net"
 	"strconv"
 	"sync"
@@ -46,12 +47,15 @@ type NodeStateUpdater interface {
 
 func NewFollower(cache *cache.Cache, aof *persistence.AOF, leaderAddr string, id string, clusterNodes []config.NodeInfo, myPriority int, myReplPort int, nodeStateUpdater NodeStateUpdater) (*Follower, error) {
 	if cache == nil {
+		slog.Error("Cache instance cannot be nil")
 		return nil, fmt.Errorf("cache instance cannot be nil")
 	}
 	if leaderAddr == "" {
+		slog.Error("Leader address cannot be empty")
 		return nil, fmt.Errorf("leader address cannot be empty")
 	}
 	if id == "" {
+		slog.Error("Follower id cannot be empty")
 		return nil, fmt.Errorf("follower id cannot be empty")
 	}
 
@@ -81,19 +85,19 @@ func (f *Follower) Start() error {
 		f.promotedMu.RLock()
 		if f.promoted {
 			f.promotedMu.RUnlock()
-			fmt.Printf("Follower %s: Stopping follower loop (now leader)\n", f.id)
+			slog.Info("Stopping follower loop (now leader)", "follower_id", f.id)
 			return nil  // exit the loop
 		}
 		f.promotedMu.RUnlock()
 
 		err := f.connectToLeader()
 		if err != nil {
-			fmt.Printf("follower %s connect failed: %v; retrying in %v\n", f.id, err, backoff)
+			slog.Warn("Connect to leader failed, retrying", "follower_id", f.id, "error", err, "backoff", backoff)
 
 			failedAttempts++
 
 			if failedAttempts >= maxAttemptsBeforeElection && len(f.clusterNodes) > 0 {
-				fmt.Printf("follower %s: Failed to connect %d times, triggering election\n", f.id, failedAttempts)
+				slog.Warn("Failed to connect multiple times, triggering election", "follower_id", f.id, "failed_attempts", failedAttempts)
                 go f.startElection()
                 failedAttempts = 0  // Reset counter
 			}
@@ -113,7 +117,7 @@ func (f *Follower) Start() error {
 		// send SYNC request
 		err = f.sendSyncRequest()
 		if err != nil {
-			fmt.Printf("follower %s SYNC failed: %v; reconnecting\n", f.id, err)
+			slog.Warn("SYNC request failed, reconnecting", "follower_id", f.id, "error", err)
 			f.closeConn()
 			continue
 		}
@@ -128,14 +132,14 @@ func (f *Follower) Start() error {
 		f.isLeaderAlive = true
 		f.heartbeatMu.Unlock()
 
-		fmt.Println("Started goroutine for heartbeats")
+		slog.Info("Started goroutine for heartbeats")
 		go f.sendHeartbeats(conn)
 		go f.monitorLeaderHealth(conn)
 
 		// read and apply replication stream
 		err = f.processReplicationStream()
 		if err != nil {
-			fmt.Printf("follower %s replication failed: %v; reconnecting\n", f.id, err)
+			slog.Warn("Replication stream failed, reconnecting", "follower_id", f.id, "error", err)
 			f.closeConn()
 			continue
 		}
@@ -188,6 +192,7 @@ func (f *Follower) sendSyncRequest() error {
 
 		resultSlice, ok := result.([]interface{})
 		if !ok {
+			slog.Error("Parse result is not a slice", "follower_id", f.id)
 			return fmt.Errorf("Error: result is not a slice")
 		}
 		command := resultSlice[0]
@@ -200,6 +205,7 @@ func (f *Follower) sendSyncRequest() error {
 			// resultSlice = [REPLICATE, seqNum, operation, key, value?, ttl?]
 
 			if len(resultSlice) < 4 {
+				slog.Error("Invalid REPLICATE command - too few elements", "follower_id", f.id, "length", len(resultSlice))
 				return fmt.Errorf("invalid REPLICATE command")
 			}
 
@@ -207,34 +213,40 @@ func (f *Follower) sendSyncRequest() error {
 			var seqNum int64
 			seqNum, ok := ParseInt64(resultSlice[1])
 			if !ok {
+				slog.Error("Invalid sequence number", "follower_id", f.id)
 				return fmt.Errorf("invalid sequence number")
 			}
 
 			// extract operation
 			operation, ok := resultSlice[2].(string)
 			if !ok {
+				slog.Error("Operation must be a string", "follower_id", f.id)
 				return fmt.Errorf("operation must be a string")
 			}
 
 			// extract key
 			key, ok := resultSlice[3].(string)
 			if !ok {
+				slog.Error("Key must be a string", "follower_id", f.id)
 				return fmt.Errorf("key must be a string")
 			}
 
 			// handle SET vs DEL
 			if operation == OpSet {
 				if len(resultSlice) != 6 {
+					slog.Error("SET requires 6 elements", "follower_id", f.id, "length", len(resultSlice))
 					return fmt.Errorf("SET requires 6 elements")
 				}
 
 				value, ok := resultSlice[4].(string)
 				if !ok {
+					slog.Error("Value must be a string", "follower_id", f.id)
 					return fmt.Errorf("value must be a string")
 				}
 
 				ttl, ok := ParseInt64(resultSlice[5])
 				if !ok {
+					slog.Error("TTL must be an integer", "follower_id", f.id)
 					return fmt.Errorf("ttl must be an integer")
 				}
 
@@ -243,11 +255,13 @@ func (f *Follower) sendSyncRequest() error {
 				f.cache.Set(key, value, ttlDuration)
 			} else if operation == OpDelete {
 				if len(resultSlice) != 4 {
+					slog.Error("DELETE requires 4 elements", "follower_id", f.id, "length", len(resultSlice))
 					return fmt.Errorf("DELETE requires 4 elements")
 				}
 
 				f.cache.Delete(key)
 			} else {
+				slog.Error("Unknown operation", "follower_id", f.id, "operation", operation)
 				return fmt.Errorf("unknown operation: %s", operation)
 			}
 
@@ -260,6 +274,7 @@ func (f *Follower) sendSyncRequest() error {
 		} else if command == "SYNCEND" {
 			seqNum, ok := DecodeSyncEnd(resultSlice)
 			if !ok {
+				slog.Error("Failed to decode SYNCEND", "follower_id", f.id)
 				return fmt.Errorf("failed to decode SYNCEND")
 			}
 
@@ -284,10 +299,11 @@ func (f *Follower) processReplicationStream() error {
 	f.mu.Unlock()
 
 	if conn == nil {
+		slog.Error("No connection to leader", "follower_id", f.id)
 		return fmt.Errorf("no connection to leader")
 	}
 
-	fmt.Printf("[FOLLOWER %s] Starting replication stream processing\n", f.id)
+	slog.Info("Starting replication stream processing", "follower_id", f.id)
 
 	for {
 		result, err := protocol.Parse(reader)
@@ -301,6 +317,7 @@ func (f *Follower) processReplicationStream() error {
 
 		resultSlice, ok := result.([]interface{})
 		if !ok {
+			slog.Error("Parse result is not a slice in replication stream", "follower_id", f.id)
 			return fmt.Errorf("Error: result is not a slice")
 		}
 		command := resultSlice[0]
@@ -309,6 +326,7 @@ func (f *Follower) processReplicationStream() error {
 			// resultSlice = [REPLICATE, seqNum, operation, key, value?, ttl?]
 
 			if len(resultSlice) < 4 {
+				slog.Error("Invalid REPLICATE command - too few elements", "follower_id", f.id, "length", len(resultSlice))
 				return fmt.Errorf("invalid REPLICATE command")
 			}
 
@@ -316,34 +334,40 @@ func (f *Follower) processReplicationStream() error {
 			var seqNum int64
 			seqNum, ok := ParseInt64(resultSlice[1])
 			if !ok {
+				slog.Error("Invalid sequence number", "follower_id", f.id)
 				return fmt.Errorf("invalid sequence number")
 			}
 
 			// extract operation
 			operation, ok := resultSlice[2].(string)
 			if !ok {
+				slog.Error("Operation must be a string", "follower_id", f.id)
 				return fmt.Errorf("operation must be a string")
 			}
 
 			// extract key
 			key, ok := resultSlice[3].(string)
 			if !ok {
+				slog.Error("Key must be a string", "follower_id", f.id)
 				return fmt.Errorf("key must be a string")
 			}
 
 			// handle SET vs DEL
 			if operation == OpSet {
 				if len(resultSlice) != 6 {
+					slog.Error("SET requires 6 elements", "follower_id", f.id, "length", len(resultSlice))
 					return fmt.Errorf("SET requires 6 elements")
 				}
 
 				value, ok := resultSlice[4].(string)
 				if !ok {
+					slog.Error("Value must be a string", "follower_id", f.id)
 					return fmt.Errorf("value must be a string")
 				}
 
 				ttl, ok := ParseInt64(resultSlice[5])
 				if !ok {
+					slog.Error("TTL must be an integer", "follower_id", f.id)
 					return fmt.Errorf("ttl must be an integer")
 				}
 
@@ -352,11 +376,13 @@ func (f *Follower) processReplicationStream() error {
 				f.cache.Set(key, value, ttlDuration)
 			} else if operation == OpDelete {
 				if len(resultSlice) != 4 {
+					slog.Error("DELETE requires 4 elements", "follower_id", f.id, "length", len(resultSlice))
 					return fmt.Errorf("DELETE requires 4 elements")
 				}
 
 				f.cache.Delete(key)
 			} else {
+				slog.Error("Unknown operation", "follower_id", f.id, "operation", operation)
 				return fmt.Errorf("unknown operation: %s", operation)
 			}
 
@@ -450,7 +476,7 @@ func (f *Follower) monitorLeaderHealth(conn net.Conn) {
 		if time.Since(last) > timeout {
 			if alive {
 				// alive -> dead
-				fmt.Printf("Follower %s: leader is dead (no heartbeat for %v)\n", f.id, time.Since(last))
+				slog.Warn("Leader is dead (no heartbeat)", "follower_id", f.id, "time_since_last_heartbeat", time.Since(last))
 			}
 
 			f.heartbeatMu.Lock()
@@ -471,11 +497,11 @@ func (f *Follower) monitorLeaderHealth(conn net.Conn) {
 }
 
 func (f *Follower) startElection() {
-	fmt.Printf("Follower %s: Starting election (my priority: %d)\n", f.id, f.myPriority)
+	slog.Info("Starting election", "follower_id", f.id, "priority", f.myPriority)
 
 	// don't have cluster info, can't elect
 	if len(f.clusterNodes) == 0 || f.myPriority == 0 {
-		fmt.Printf("Follower %s: No cluster config/priority, skipping election\n", f.id)
+		slog.Info("No cluster config/priority, skipping election", "follower_id", f.id)
 		return
 	}
 
@@ -496,27 +522,27 @@ func (f *Follower) startElection() {
 
 	waitTime := time.Duration(waitSteps) * delayPerPriority
 
-	fmt.Printf("Follower %s: Waiting %v before attempting leadership\n", f.id, waitTime)
+	slog.Info("Waiting before attempting leadership", "follower_id", f.id, "wait_time", waitTime)
 	time.Sleep(waitTime)
 
 	
 	// after waiting, check if someone else already became leader
 	newLeaderAddr := f.findNewLeader() // returns address of new leader
 	if newLeaderAddr != "" {
-		fmt.Printf("Follower %s: Detected existing leader, aborting election\n", f.id)
+		slog.Info("Detected existing leader, aborting election", "follower_id", f.id)
 
 		// update leader address to point to new leader
 		f.mu.Lock()
 		f.leaderAddr = newLeaderAddr
 		f.mu.Unlock()
 
-		fmt.Printf("Follower %s: Updated leader address to %s\n", f.id, newLeaderAddr)
+		slog.Info("Updated leader address", "follower_id", f.id, "new_leader_addr", newLeaderAddr)
 		return
 	}
 	
 
 	// win election: promote
-	fmt.Printf("Follower %s: Promoting self to leader\n", f.id)
+	slog.Info("Promoting self to leader", "follower_id", f.id)
 
 	// close follower conn
 	f.closeConn()
@@ -524,7 +550,7 @@ func (f *Follower) startElection() {
 	// create leader with existing aof
 	leader, err := NewLeader(f.cache, f.aof, f.myReplPort)
 	if err != nil {
-		fmt.Printf("Error creating leader: %v\n", err)
+		slog.Error("Error creating leader", "error", err)
 		return
 	}
 
@@ -542,7 +568,7 @@ func (f *Follower) startElection() {
 	f.promoted = true
 	f.promotedMu.Unlock()
 
-	fmt.Printf("Follower %s is now leader\n", f.id)
+	slog.Info("Follower is now leader", "follower_id", f.id)
 }
 
 func (f *Follower) findNewLeader() string {
@@ -571,7 +597,7 @@ func (f *Follower) findNewLeader() string {
 			_ = conn.Close()
 			if werr == nil {
 				// someone is listening and accepts SYNC
-				fmt.Printf("Follower %s: Found existing leader at %s\n", f.id, addr)
+				slog.Info("Found existing leader", "follower_id", f.id, "leader_addr", addr)
 				return addr
 			}
 		} else {

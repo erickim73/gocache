@@ -3,6 +3,7 @@ package persistence
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"io"
 	"os"
 	"strconv"
@@ -89,6 +90,7 @@ func (aof *AOF) Append(data string) error {
 		// ensure durability
 		err = aof.file.Sync()
 		if err != nil {
+			slog.Error("Fsync failed", "error", err)
 			return fmt.Errorf("fsync failed: %v", err)
 		}
 	}
@@ -142,7 +144,7 @@ func (aof *AOF) ReadOperations() ([]Operation, error) {
 			if err == io.EOF {
 				break // reached end of file
 			}
-			fmt.Println("Skipping corrupted entry: ", err)
+			slog.Warn("Skipping corrupted entry", "error", err)
 			continue
 		}
 	
@@ -157,7 +159,7 @@ func (aof *AOF) ReadOperations() ([]Operation, error) {
 		for i, v := range partsInterface{
 			parts[i], ok = v.(string)
 			if !ok {
-				fmt.Printf("element %d is not a string\n", i)
+				slog.Warn("Element is not a string", "index", i)
 				break
 			}
 		}
@@ -229,6 +231,7 @@ func (aof *AOF) rewriteAOF () error {
 		// write directly to file
 		_, err := tempFile.Write([]byte(aofCommand))
 		if err != nil {
+			slog.Error("Failed to write to temp AOF file", "error", err)
 			return fmt.Errorf("failed to write to temp AOF file: %v", err)
 		}
 	}
@@ -236,11 +239,13 @@ func (aof *AOF) rewriteAOF () error {
 	// ensure all writes in tempFile are flushed to disk
 	err = tempFile.Sync()
 	if err != nil {
+		slog.Error("Fsync failed on temp file", "error", err)
 		return fmt.Errorf("fsync failed: %v", err)
 	}
 
 	err = tempFile.Close()
 	if err != nil {
+		slog.Error("Closing tempfile failed", "error", err)
 		return fmt.Errorf("closing tempfile failed: %v", err)
 	}
 
@@ -254,12 +259,14 @@ func (aof *AOF) rewriteAOF () error {
 	// rename temp file to original
 	err = os.Rename(tempName, aof.fileName)
 	if err != nil {
+		slog.Error("Renaming file failed", "error", err)
 		return fmt.Errorf("renaming file failed: %v", err)
 	}
 	
 	// reopen file so future writes append to new aof
 	newFile, err := os.OpenFile(aof.fileName, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0644)
 	if err != nil {
+		slog.Error("Failed to reopen new AOF", "error", err)
 		return fmt.Errorf("failed to reopen new aof: %v", err)
 	}
 	
@@ -298,8 +305,6 @@ func (aof *AOF) checkRewriteTrigger() {
 	// growth ratio
 	growthRatio := float64(currentSize) / float64(aof.lastRewriteSize)
 
-	
-	
 	if growthRatio > float64(aof.growthFactor) {
 		// set flag and launch rewrite
 		aof.rewriting = true
@@ -312,7 +317,7 @@ func (aof *AOF) checkRewriteTrigger() {
 			aof.mu.Unlock()
 
 			if err != nil {
-				fmt.Println("rewrite failed: ", err)
+				slog.Error("AOF rewrite failed", "error", err)
 			}
 
 		}()

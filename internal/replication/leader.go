@@ -3,6 +3,7 @@ package replication
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -43,7 +44,7 @@ func NewLeader(cache *cache.Cache, aof *persistence.AOF, replPort int) (*Leader,
 	address := fmt.Sprintf("0.0.0.0:%d", replPort)
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		fmt.Printf("Error creating listener: %v", err)
+		slog.Error("Error creating listener", "error", err, "port", replPort)
 		return nil, err
 	}
 
@@ -59,7 +60,7 @@ func NewLeader(cache *cache.Cache, aof *persistence.AOF, replPort int) (*Leader,
 }
 
 func (l *Leader) Start() error {
-	fmt.Printf("Leader replication server listening on port %d...\n", l.replPort)
+	slog.Info("Leader replication server listening", "port", l.replPort)
 
 	// goroutine to send and monitor heart beats
 	go l.sendHeartbeats()
@@ -68,7 +69,7 @@ func (l *Leader) Start() error {
 	for {
 		conn, err := l.listener.Accept()
 		if err != nil {
-			return fmt.Errorf("error accepting connection: %v", err)
+			slog.Error("Error accepting connection", "error", err)
 		}
 
 		go l.handleFollower(conn)
@@ -87,7 +88,7 @@ func (l *Leader) handleFollower(conn net.Conn) {
 
 	syncReq, err := DecodeSyncRequest(reader)
 	if err != nil {
-		fmt.Printf("Error decoding SYNC request: %v\n", err)
+		slog.Error("Error decoding SYNC request", "error", err)
 		return
 	}
 
@@ -133,13 +134,13 @@ func (l *Leader) handleFollower(conn net.Conn) {
 		// encode and send
 		encoded, err := EncodeReplicateCommand(cmd)
 		if err != nil {
-			fmt.Printf("Error encoding: %v\n", err)
+			slog.Error("Error encoding replicate command", "error", err, "key", key)
 			return
 		}
 
 		_, err = writer.Write(encoded)
 		if err != nil {
-			fmt.Printf("Error sending snapshot: %v\n", err)
+			slog.Error("Error sending snapshot", "error", err, "key", key)
 			return
 		}
 	}
@@ -155,17 +156,17 @@ func (l *Leader) handleFollower(conn net.Conn) {
 	syncEndMsg := EncodeSyncEnd(finalSeqNum)
 	_, err = writer.Write(syncEndMsg)
 	if err != nil {
-		fmt.Printf("Error sending SYNCEND: %v\n", err)
+		slog.Error("Error sending SYNCEND", "error", err, "follower_id", syncReq.FollowerID)
 		return
 	}
 
 	err = writer.Flush()
 	if err != nil {
-		fmt.Printf("Error flushing SYNCEND: %v\n", err)
+		slog.Error("Error flushing SYNCEND", "error", err, "follower_id", syncReq.FollowerID)
 		return
 	}
 
-	fmt.Printf("Sent snapshot to follower %s\n", syncReq.FollowerID)
+	slog.Info("Sent snapshot to follower", "follower_id", syncReq.FollowerID)
 
 	// add follower to tracked list
 	f := l.addFollower(syncReq.FollowerID, conn)
@@ -173,7 +174,7 @@ func (l *Leader) handleFollower(conn net.Conn) {
 	for {
 		result, err := protocol.Parse(reader)
 		if err != nil {
-			fmt.Printf("Follower %s disconnected\n", syncReq.FollowerID)
+			slog.Info("Follower disconnected", "follower_id", syncReq.FollowerID)
 			l.removeFollower(syncReq.FollowerID)
 			return
 		}
@@ -206,7 +207,7 @@ func (l *Leader) addFollower(id string, conn net.Conn) *FollowerConn {
 	}
 	l.followers = append(l.followers, follower)
 
-	fmt.Printf("Added followers %s (total: %d)\n", id, len(l.followers))
+	slog.Info("Added follower", "follower_id", id, "total_followers", len(l.followers))
 	return follower
 }
 
@@ -219,7 +220,7 @@ func (l *Leader) removeFollower(id string) {
 			// remove by swapping with last element and truncating
 			l.followers[i] = l.followers[len(l.followers)-1]
 			l.followers = l.followers[:len(l.followers)-1]
-			fmt.Printf("Removed follower %s (remaining %d)\n", id, len(l.followers))
+			slog.Info("Removed follower", "follower_id", id, "remaining_followers", len(l.followers))
 			return
 		}
 	}
@@ -257,7 +258,7 @@ func (l *Leader) Replicate(operation string, key string, value string, ttl int64
 		follower.mu.Unlock()
 
 		if err != nil {
-			fmt.Printf("Error sending to follower %s: %v\n", follower.id, err)
+			slog.Error("Error sending to follower", "follower_id", follower.id, "error", err)
 		}
 	}
 
@@ -268,7 +269,7 @@ func (l *Leader) sendHeartbeats() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	fmt.Println("Leader heartbeat sender started")
+	slog.Info("Leader heartbeat sender started")
 
 	leaderID := "leader"
 	for range ticker.C {
@@ -286,7 +287,7 @@ func (l *Leader) sendHeartbeats() {
 		}
 		encoded, err := EncodeHeartbeatCommand(heartbeat)
 		if err != nil {
-			fmt.Printf("Failed to encode heartbeat: %v\n", err)
+			slog.Error("Failed to encode heartbeat", "error", err)
 			continue
 		}
 
@@ -297,7 +298,7 @@ func (l *Leader) sendHeartbeats() {
 			follower.mu.Unlock()
 
 			if err != nil {
-				fmt.Printf("Heartbeat write failed to follower %s: %v\n", follower.id, err)
+				slog.Error("Heartbeat write failed to follower", "follower_id", follower.id, "error", err)
 			}
 		}
 	}
@@ -328,7 +329,7 @@ func (l *Leader) monitorFollowerHealth() {
 			}
 
 			if time.Since(last) > timeout {
-				fmt.Printf("Follower %s is dead (no heartbeat for %v)\n", follower.id, time.Since(last))
+				slog.Warn("Follower is dead (no heartbeat)", "follower_id", follower.id, "time_since_heartbeat", time.Since(last))
 
 				// close connection
 				follower.mu.Lock()

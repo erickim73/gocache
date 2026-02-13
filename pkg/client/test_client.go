@@ -2,13 +2,14 @@ package client
 
 import (
 	"net"
-	"fmt"
+	// "fmt"
+	"log/slog"
 )
 
 func TestClient() {  
 	conn, err := net.Dial("tcp", "localhost:6379")
 	if err != nil {
-		fmt.Printf("Error connecting to server: %v\n", err)
+		slog.Error("Error connecting to server", "address", "localhost:6379", "error", err)
 		return
 	}
 	defer conn.Close()
@@ -19,7 +20,7 @@ func TestClient() {
 
 	buf := make([]byte, 1024)
 	n, _ := conn.Read(buf)
-	fmt.Println("Server response: ", string(buf[:n]))
+	slog.Info("Server response for SET", "response", string(buf[:n]))
 
 	// GET key
 	resp2 := "*2\r\n$3\r\nGET\r\n$3\r\nkey\r\n"
@@ -27,7 +28,7 @@ func TestClient() {
 
 	buf2 := make([]byte, 1024)
 	n, _ = conn.Read(buf2)
-	fmt.Println("value for key: ", string(buf2[:n]))
+	slog.Info("Value for key from GET", "value", string(buf2[:n]))
 
 	// DEL key
 	resp3 := "*2\r\n$3\r\nDEL\r\n$3\r\nkey\r\n"
@@ -35,7 +36,7 @@ func TestClient() {
 
 	buf3 := make([]byte, 1024)
 	n, _ = conn.Read(buf3)
-	fmt.Println("Deleted response: ", string(buf[:n]))
+	slog.Info("Deleted response for DEL", "response", string(buf[:n]))
 
 	// GET key
 	resp4 := "*2\r\n$3\r\nGET\r\n$3\r\nkey\r\n"
@@ -43,7 +44,7 @@ func TestClient() {
 
 	buf4 := make([]byte, 1024)
 	n, _ = conn.Read(buf4)
-	fmt.Println("value for key: ", string(buf4[:n]))
+	slog.Info("Value for key after deletion", "value", string(buf4[:n]))
 
 	// FDS key
 	resp5 := "*2\r\n$3\r\nFDS\r\n$3\r\nkey\r\n"
@@ -51,6 +52,6 @@ func TestClient() {
 
 	buf5 := make([]byte, 1024)
 	n, _ = conn.Read(buf5)
-	fmt.Println("FDS response: ", string(buf5[:n]))
+	slog.Info("FDS command response", "response", string(buf5[:n]))
 }
 

@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/erickim73/gocache/internal/cluster"
@@ -49,7 +50,7 @@ func (ns *NodeState) ShouldForwardRequest(key string, isWrite bool) (bool, strin
 		return false, "", ""
 	}
 
-	fmt.Printf("[DEBUG] key '%s' → hash ring says: shard '%s'\n", key, responsibleShardID)
+	slog.Debug("Key routing decision", "key", key, "responsible_shard", responsibleShardID)
 
 	// check if this key belongs to my shard
 	myShard, err := ns.config.GetShardForNode(ns.config.NodeID)
@@ -63,7 +64,7 @@ func (ns *NodeState) ShouldForwardRequest(key string, isWrite bool) (bool, strin
 
 		// for reads, followers can serve locally
 		if !isWrite {
-			fmt.Printf("[DEBUG] Read request for key '%s' in my shard %s - handling locally\n", key, myShard.ShardID)
+			slog.Debug("Read request in my shard - handling locally", "key", key, "shard_id", myShard.ShardID)
 			return false, "", "" // handle locally (even if follower)
 		}
 
@@ -74,7 +75,7 @@ func (ns *NodeState) ShouldForwardRequest(key string, isWrite bool) (bool, strin
 		}
 
 		if leaderNodeID == ns.config.NodeID {
-			fmt.Printf("[DEBUG] Write request for key '%s' - I am shard leader, handling locally\n", key)
+			slog.Debug("Write request - I am shard leader, handling locally", "key", key)
 			return false, "", "" // i'm leader, handle locally
 		}
 
@@ -87,7 +88,7 @@ func (ns *NodeState) ShouldForwardRequest(key string, isWrite bool) (bool, strin
 			}
 		}
 
-		fmt.Printf("[DEBUG] Write request for key '%s' - forwarding to shard leader '%s'\n", key, leaderNodeID)
+		slog.Debug("Write request - forwarding to shard leader", "key", key, "leader_node_id", leaderNodeID)
 		return true, leaderNodeID, targetAddr
 	}
 
@@ -107,7 +108,7 @@ func (ns *NodeState) ShouldForwardRequest(key string, isWrite bool) (bool, strin
 		}
 	}
 
-	fmt.Printf("[DEBUG] Key '%s' belongs to different shard %s, forwarding to leader '%s'\n", key, responsibleShardID, leaderNodeID)
+	slog.Debug("Key belongs to different shard, forwarding to leader", "key", key, "shard_id", responsibleShardID, "leader_node_id", leaderNodeID)
 	// forward to another node
 	return true, leaderNodeID, targetAddr
 }

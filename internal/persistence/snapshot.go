@@ -3,6 +3,7 @@ package persistence
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"io"
 	"os"
 	"strconv"
@@ -17,10 +18,18 @@ func SnapshotExists(name string) bool {
 }
 
 func (aof *AOF) CreateSnapshot() error {
+	slog.Info("Snapshot creation started",
+		"snapshot_file", aof.snapshotName,
+	)
+
 	// create a temp snapshot file
 	tempName := aof.snapshotName + ".temp.rdb"
 	tempFile, err := os.OpenFile(tempName, os.O_CREATE | os.O_WRONLY | os.O_TRUNC, 0644)
 	if err != nil {
+		slog.Error("Failed to create temp snapshot file",
+			"temp_file", tempName,
+			"error", err,
+		)
 		return err
 	}
 
@@ -38,6 +47,14 @@ func (aof *AOF) CreateSnapshot() error {
 	// create a snapshot of the cache
 	snapshot := aof.cache.Snapshot()
 
+	itemCount := len(snapshot)
+	slog.Debug("Cache snapshot captured",
+		"item_count", itemCount,
+	)
+
+	writtenCount := 0
+	skippedCount := 0
+
 	// iterate over snapshot and write to tempFile
 	for key, entry := range snapshot {
 		ttl := time.Duration(0)
@@ -50,6 +67,7 @@ func (aof *AOF) CreateSnapshot() error {
 			ttl = time.Until(entry.ExpiresAt)
 
 			if ttl < 0 {
+				skippedCount++
 				continue // skip expired items
 			}
 		}
@@ -60,18 +78,38 @@ func (aof *AOF) CreateSnapshot() error {
 		// write directly to file
 		_, err := tempFile.Write([]byte(aofCommand))
 		if err != nil {
+			slog.Error("Failed to write to temp snapshot file",
+				"temp_file", tempName,
+				"key", key,
+				"error", err,
+			)
 			return fmt.Errorf("failed to write to temp AOF file: %v", err)
 		}
+		writtenCount++
 	}
+
+	slog.Debug("Snapshot data written to temp file",
+		"written_items", writtenCount,
+		"skipped_expired", skippedCount,
+		"temp_file", tempName,
+	)
 
 	// ensure all writes in tempFile are flushed to disk
 	err = tempFile.Sync()
 	if err != nil {
+		slog.Error("Failed to fsync temp snapshot file",
+			"temp_file", tempName,
+			"error", err,
+		)
 		return fmt.Errorf("fsync failed: %v", err)
 	}
 
 	err = tempFile.Close()
 	if err != nil {
+		slog.Error("Failed to close temp snapshot file",
+			"temp_file", tempName,
+			"error", err,
+		)
 		return fmt.Errorf("closing tempfile failed: %v", err)
 	}
 
@@ -82,6 +120,11 @@ func (aof *AOF) CreateSnapshot() error {
 	// rename temp file to original
 	err = os.Rename(tempName, aof.snapshotName)
 	if err != nil {
+		slog.Error("Failed to rename temp snapshot to final",
+			"temp_file", tempName,
+			"snapshot_file", aof.snapshotName,
+			"error", err,
+		)
 		return fmt.Errorf("renaming file failed: %v", err)
 	}
 
@@ -91,12 +134,20 @@ func (aof *AOF) CreateSnapshot() error {
 	// empty aof
 	err = os.Truncate(aof.fileName, 0)
 	if err != nil {
+		slog.Error("Failed to truncate AOF file",
+			"aof_file", aof.fileName,
+			"error", err,
+		)
 		return fmt.Errorf("trncating AOF failed: %v", err)
 	}
 
 	// reopen aof file so future append calls work
 	newFile, err := os.OpenFile(aof.fileName, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0644)
 	if err != nil {
+		slog.Error("Failed to reopen AOF file",
+			"aof_file", aof.fileName,
+			"error", err,
+		)
 		return fmt.Errorf("failed to reopen new aof: %v", err)
 	}
 	
@@ -104,17 +155,36 @@ func (aof *AOF) CreateSnapshot() error {
 
 	// mark rewrite successful
 	success = true
+
+	slog.Info("Snapshot created successfully",
+		"snapshot_file", aof.snapshotName,
+		"items_written", writtenCount,
+		"items_skipped", skippedCount,
+	)
+
 	return nil
 }
 
 func (aof *AOF) LoadSnapshot() error {
+	slog.Info("Loading snapshot",
+		"snapshot_file", aof.snapshotName,
+	)
+
 	snapshot, err := os.Open(aof.snapshotName)
 	if err != nil {
+		slog.Error("Failed to open snapshot file",
+			"snapshot_file", aof.snapshotName,
+			"error", err,
+		)
 		return fmt.Errorf("failed to open snapshot: %v", err)
 	}
 	defer snapshot.Close()
 
 	reader := bufio.NewReader(snapshot)
+
+	// track loading statistics
+	loadedCount := 0
+	corruptedCount := 0
 
 	for {
 		result, err := protocol.Parse(reader)
@@ -122,7 +192,11 @@ func (aof *AOF) LoadSnapshot() error {
 			if err == io.EOF {
 				break // reached end of file
 			}
-			fmt.Println("Skipping corrupted entry: ", err)
+			slog.Warn("Skipping corrupted snapshot entry",
+				"snapshot_file", aof.snapshotName,
+				"error", err,
+			)
+			corruptedCount++
 			continue
 		}
 
@@ -137,7 +211,11 @@ func (aof *AOF) LoadSnapshot() error {
 		for i, v := range partsInterface{
 			parts[i], ok = v.(string)
 			if !ok {
-				fmt.Printf("element %d is not a string\n", i)
+				slog.Warn("Snapshot entry element is not a string",
+					"snapshot_file", aof.snapshotName,
+					"element_index", i,
+					"element_type", fmt.Sprintf("%T", v),
+				)
 				break
 			}
 		}
@@ -151,8 +229,15 @@ func (aof *AOF) LoadSnapshot() error {
 				}
 			}
 			aof.cache.Set(parts[1], parts[2], ttl)
+			loadedCount++
 		}
 	}
+
+	slog.Info("Snapshot loaded successfully",
+		"snapshot_file", aof.snapshotName,
+		"items_loaded", loadedCount,
+		"corrupted_entries", corruptedCount,
+	)
 
 	return nil
 }
@@ -161,17 +246,35 @@ func (aof *AOF) checkSnapshotTrigger() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
+	slog.Debug("Snapshot trigger started", "interval", "5m")
+
 	for {
 		select {
 		case <- ticker.C:
+
+			slog.Debug("Snapshot trigger fired, creating snapshot")
+
 			// create snapshot
+			startTime := time.Now()
 			err := aof.CreateSnapshot()
+			duration := time.Since(startTime)
+
 			if err != nil {
-				fmt.Println("Snapshot error: ", err)
+				slog.Error("Snapshot creation failed",
+					"snapshot_file", aof.snapshotName,
+					"duration_ms", duration.Milliseconds(),
+					"error", err,
+				)
 			} else {
-				fmt.Println("Snapshot created")
+				slog.Info("Periodic snapshot completed",
+					"snapshot_file", aof.snapshotName,
+					"duration_ms", duration.Milliseconds(),
+				)
 			}
 		case <- aof.done:
+			// log shutdown
+			slog.Debug("Snapshot trigger stopping (AOF closed)")
+
 			// stop when aof is closed
 			return
 		}

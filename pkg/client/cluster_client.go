@@ -1,7 +1,8 @@
 package client
 
 import (
-	"fmt"
+	// "fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -44,13 +45,14 @@ func NewClusterClient(seeds []string) (*ClusterClient, error) {
 	}
 	
 	// immediately discover topology on initialization
-	fmt.Printf("[CLUSTER CLIENT] Discovering cluster topology from seeds: %v\n", seeds)
+	slog.Info("Discovering cluster topology from seeds", "seeds", seeds)
 	err := c.discoverTopology()
 	if err != nil {
+		slog.Error("Failed to discover cluster topology", "error", err)
 		return nil, fmt.Errorf("failed to discover cluster topology: %v", err)
 	}
 
-	fmt.Printf("[CLUSTER CLIENT] Successfully initialized with %d nodes\n", len(c.nodes))
+	slog.Info("Successfully initialized cluster client", "node_count", len(c.nodes))
 	return c, nil
 }
 
@@ -60,13 +62,13 @@ func (c *ClusterClient) discoverTopology() error {
 
 	// try each seed until it succeeds
 	for i, seedAddr := range c.seeds {
-		fmt.Printf("[CLUSTER CLIENT] Attempting to discover topology from seed %d/%d: %s\n", i+1, len(c.seeds), seedAddr)
+		slog.Debug("Attempting to discover topology from seed", "seed_index", i+1, "total_seeds", len(c.seeds), "seed_address", seedAddr)
 
 		// create a temporary client connection to the seed
 		seedClient, err := NewClient(seedAddr)
 		if err != nil {
 			lastErr = fmt.Errorf("failed to connect to seed %s: %v", seedAddr, err)
-			fmt.Printf("[CLUSTER CLIENT] %v\n", lastErr)
+			slog.Warn("Failed to connect to seed", "seed_address", seedAddr, "error", err)
 			continue
 		}
 
@@ -76,7 +78,7 @@ func (c *ClusterClient) discoverTopology() error {
 		if err != nil {
 			seedClient.Close()
 			lastErr = fmt.Errorf("CLUSTER NODES command failed on %s: %v", seedAddr, err)
-			fmt.Printf("[CLUSTER CLIENT] %v\n", lastErr)
+			slog.Warn("CLUSTER NODES command failed", "seed_address", seedAddr, "error", err)
 			continue // try next seed
 		}
 
@@ -87,18 +89,19 @@ func (c *ClusterClient) discoverTopology() error {
 		err = c.parseClusterNodes(response)
 		if err != nil {
 			lastErr = fmt.Errorf("failed to parse CLUSTER NODES response: %v", err)
-			fmt.Printf("[CLUSTER CLIENT] %v\n", lastErr)
+			slog.Warn("Failed to parse CLUSTER NODES response", "error", err)
 			continue
 		}
 
 		// build hash ring from discovered nodes
 		c.buildHashRing()
 
-		fmt.Printf("[CLUSTER CLIENT] Successfully discovered %d nodes from %s\n", len(c.nodes), seedAddr)
+		slog.Info("Successfully discovered nodes from seed", "node_count", len(c.nodes), "seed_address", seedAddr)
 		return nil
 	}
 
 	// if all seeds fail, return the last error encountered
+	slog.Error("Failed to discover topology from any seed", "error", lastErr)
 	return fmt.Errorf("failed to discover topology from any seed: %v", lastErr)
 }
 
@@ -127,7 +130,7 @@ func (c *ClusterClient) parseClusterNodes(response string) error {
 		// expected format: nodeID address status"
 		parts := strings.Fields(line)
 		if len(parts) < 3 {
-			fmt.Printf("[CLUSTER CLIENT] Warning: skipping malformed line: %s\n", line)
+			slog.Warn("Skipping malformed CLUSTER NODES line", "line", line)
 			continue
 		}
 
@@ -140,7 +143,7 @@ func (c *ClusterClient) parseClusterNodes(response string) error {
 
 		// store node info 
 		c.nodes[nodeInfo.ID] = nodeInfo
-		fmt.Printf("[CLUSTER CLIENT] Discovered node: %s at %s (%s)\n", nodeInfo.ID, nodeInfo.Address, nodeInfo.Status)
+		slog.Debug("Discovered node", "node_id", nodeInfo.ID, "address", nodeInfo.Address, "status", nodeInfo.Status)
 	}
 
 	if len(c.nodes) == 0 {
@@ -155,13 +158,13 @@ func (c *ClusterClient) buildHashRing() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	fmt.Printf("[CLUSTER CLIENT] Building hash ring with %d nodes\n", len(c.nodes))
+	slog.Info("Building hash ring", "node_count", len(c.nodes))
 
 	// add each node to the hash ring
 	for nodeID, nodeInfo := range c.nodes {
 		// only add active nodes to hash ring
 		if nodeInfo.Status != "active" {
-			fmt.Printf("[CLUSTER CLIENT] Skipping non-active node %s (%s)\n", nodeID, nodeInfo.Status)
+			slog.Debug("Skipping non-active node", "node_id", nodeID, "status", nodeInfo.Status)
 			continue
 		}
 
@@ -171,10 +174,10 @@ func (c *ClusterClient) buildHashRing() {
 		// store the node's network address in the hash ring
 		c.hashRing.SetNodeAddress(nodeID, nodeInfo.Address)
 
-		fmt.Printf("[CLUSTER CLIENT] Added node %s to hash ring at address %s\n", nodeID, nodeInfo.Address)
+		slog.Debug("Added node to hash ring", "node_id", nodeID, "address", nodeInfo.Address)
 	}
 
-	fmt.Printf("[CLUSTER CLIENT] Hash ring built with %d active nodes\n", c.hashRing.GetNodeCount())
+	slog.Info("Hash ring built", "active_node_count", c.hashRing.GetNodeCount())
 }
 
 // retrieves a value from the cluster
@@ -185,6 +188,7 @@ func (c *ClusterClient) Get(key string) (string, error) {
 	c.mu.RUnlock()
 
 	if err != nil {
+		slog.Error("Failed to find node for key", "key", key, "error", err)
 		return "", fmt.Errorf("failed to find node for key %s: %v", key, err)
 	}
 
@@ -194,10 +198,11 @@ func (c *ClusterClient) Get(key string) (string, error) {
 	c.mu.RUnlock()
 
 	if address == "" {
+		slog.Error("No address found for node", "node_id", nodeID)
 		return "", fmt.Errorf("no address found for node %s", nodeID)
 	}
 
-	fmt.Printf("[CLUSTER CLIENT] Routing GET(%s) to node %s at %s\n", key, nodeID, address)
+	slog.Debug("Routing GET request", "key", key, "node_id", nodeID, "address", address)
 
 	// get a connection to that node
 	conn, err := c.getOrCreateConnection(address)
@@ -210,11 +215,12 @@ func (c *ClusterClient) Get(key string) (string, error) {
 	if err != nil {
 		// handle MOVED responses - means cluster topology changed
 		if strings.HasPrefix(err.Error(), "MOVED") {
-			fmt.Printf("[CLUSTER CLIENT] Received MOVED response, refreshing topology\n")
+			slog.Info("Received MOVED response, refreshing topology", "key", key)
 			
 			// refresh our view of the cluster
 			refreshErr := c.discoverTopology()
 			if refreshErr != nil {
+				slog.Error("Failed to refresh topology after MOVED", "error", refreshErr)
 				return "", fmt.Errorf("failed to refresh topology: %v", refreshErr)
 			}
 
@@ -247,9 +253,10 @@ func (c *ClusterClient) getOrCreateConnection(address string) (*Client, error) {
 	}
 
 	// create new connection to node
-	fmt.Printf("[CLUSTER CLIENT] Creating new connection to %s\n", address)
+	slog.Debug("Creating new connection to node", "address", address)
 	conn, err := NewClient(address)
 	if err != nil {
+		slog.Error("Failed to create connection", "address", address, "error", err)
 		return nil, fmt.Errorf("failed to connect to %s: %v", address, err)
 	}
 
@@ -266,6 +273,7 @@ func (c *ClusterClient) Set(key string, value string) error {
 	c.mu.RUnlock()
 
 	if err != nil {
+		slog.Error("Failed to find node for key", "key", key, "error", err)
 		return fmt.Errorf("failed to find node for key %s: %v", key, err)
 	}
 
@@ -275,10 +283,11 @@ func (c *ClusterClient) Set(key string, value string) error {
 	c.mu.RUnlock()
 
 	if address == "" {
+		slog.Error("No address found for node", "node_id", nodeID)
 		return fmt.Errorf("no address found for node %s", nodeID)
 	}
-
-	fmt.Printf("[CLUSTER CLIENT] Routing SET(%s) to node %s at %s\n", key, nodeID, address)
+	
+	slog.Debug("Routing SET request", "key", key, "node_id", nodeID, "address", address)
 
 	// get or create a connection to the target node
 	conn, err := c.getOrCreateConnection(address)
@@ -291,10 +300,11 @@ func (c *ClusterClient) Set(key string, value string) error {
 	if err != nil {
 		// handle MOVED responses by refreshing topology and refreshing
 		if strings.HasPrefix(err.Error(), "MOVED") {
-			fmt.Printf("[CLUSTER CLIENT] Received MOVED response, refreshing topology\n")
+			slog.Info("Received MOVED response, refreshing topology", "key", key)
 
 			refreshErr := c.discoverTopology()
 			if refreshErr != nil {
+				slog.Error("Failed to refresh topology after MOVED", "error", refreshErr)
 				return fmt.Errorf("failed to refresh topology: %v", refreshErr)
 			}
 
@@ -315,6 +325,7 @@ func (c *ClusterClient) SetWithTTL(key string, value string, ttl time.Duration) 
 	c.mu.RUnlock()
 
 	if err != nil {
+		slog.Error("Failed to find node for key", "key", key, "error", err)
 		return fmt.Errorf("failed to find node for key %s: %v", key, err)
 	}
 
@@ -324,10 +335,11 @@ func (c *ClusterClient) SetWithTTL(key string, value string, ttl time.Duration) 
 	c.mu.RUnlock()
 
 	if address == "" {
+		slog.Error("No address found for node", "node_id", nodeID)
 		return fmt.Errorf("no address found for node %s", nodeID)
 	}
 
-	fmt.Printf("[CLUSTER CLIENT] Routing SET(%s) with TTL=%v to node %s at %s\n", key, ttl, nodeID, address)
+	slog.Debug("Routing SET request with TTL", "key", key, "ttl", ttl, "node_id", nodeID, "address", address)
 
 	// get or create a connection to the target node
 	conn, err := c.getOrCreateConnection(address)
@@ -340,10 +352,11 @@ func (c *ClusterClient) SetWithTTL(key string, value string, ttl time.Duration) 
 	if err != nil {
 		// handle MOVED responses by refreshing topology and refreshing
 		if strings.HasPrefix(err.Error(), "MOVED") {
-			fmt.Printf("[CLUSTER CLIENT] Received MOVED response, refreshing topology\n")
+			slog.Info("Received MOVED response, refreshing topology", "key", key)
 
 			refreshErr := c.discoverTopology()
 			if refreshErr != nil {
+				slog.Error("Failed to refresh topology after MOVED", "error", refreshErr)
 				return fmt.Errorf("failed to refresh topology: %v", refreshErr)
 			}
 
@@ -364,6 +377,7 @@ func (c *ClusterClient) Delete(key string) error {
 	c.mu.RUnlock()
 
 	if err != nil {
+		slog.Error("Failed to find node for key", "key", key, "error", err)
 		return fmt.Errorf("failed to find node for key %s: %v", key, err)
 	}
 
@@ -373,10 +387,11 @@ func (c *ClusterClient) Delete(key string) error {
 	c.mu.RUnlock()
 
 	if address == "" {
+		slog.Error("No address found for node", "node_id", nodeID)
 		return fmt.Errorf("no address found for node %s", nodeID)
 	}
 
-	fmt.Printf("[CLUSTER CLIENT] Routing DEL(%s) to node %s at %s\n", key, nodeID, address)
+	slog.Debug("Routing DEL request", "key", key, "node_id", nodeID, "address", address)
 	
 	// get or create a connection to the target node
 	conn, err := c.getOrCreateConnection(address)
@@ -388,10 +403,11 @@ func (c *ClusterClient) Delete(key string) error {
 	if err != nil {
 		// handle MOVED responses by refreshing topology and refreshing
 		if strings.HasPrefix(err.Error(), "MOVED") {
-			fmt.Printf("[CLUSTER CLIENT] Received MOVED response, refreshing topology\n")
+			slog.Info("Received MOVED response, refreshing topology", "key", key)
 
 			refreshErr := c.discoverTopology()
 			if refreshErr != nil {
+				slog.Error("Failed to refresh topology after MOVED", "error", refreshErr)
 				return fmt.Errorf("failed to refresh topology: %v", refreshErr)
 			}
 
@@ -413,24 +429,24 @@ func (c *ClusterClient) StartTopologyRefresh(interval time.Duration) {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
-		fmt.Printf("[CLUSTER CLIENT] Started topology refresh (interval: %v)\n", interval)
+		slog.Info("Started topology refresh", "interval", interval)
 
 		for {
 			select {
 			case <- ticker.C:
 				// periodically refresh topology
-				fmt.Printf("[CLUSTER CLIENT] Refreshing topology...\n")
+				slog.Debug("Refreshing topology...")
 				err := c.discoverTopology()
 				if err != nil {
 					// log error but don't crash
-					fmt.Printf("[CLUSTER CLIENT] Topology refresh failed: %v\n", err)
+					slog.Warn("Topology refresh failed", "error", err)
 				} else {
-					fmt.Printf("[CLUSTER CLIENT] Topology refresh successful\n")
+					slog.Debug("Topology refresh successful")
 				}
 
 			case <-c.stopCh:
 				// stop signal received
-				fmt.Printf("[CLUSTER CLIENT] Stopping topology refresh\n")
+				slog.Info("Stopping topology refresh")
 				return
 			}
 		}
@@ -449,9 +465,9 @@ func (c *ClusterClient) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	fmt.Printf("[CLUSTER CLIENT] Closing all connections\n")
+	slog.Info("Closing all cluster client connections", "connection_count", len(c.conns))
 	for address, conn := range c.conns {
-		fmt.Printf("[CLUSTER CLIENT] Closing connection to %s\n", address)
+		slog.Debug("Closing connection", "address", address)
 		conn.Close()
 	}
 
@@ -463,7 +479,7 @@ func (c *ClusterClient) Close() error {
 
 // manually refreshes cluster topology
 func (c *ClusterClient) RefreshTopology() error {
-	fmt.Printf("[CLUSTER CLIENT] Manually refreshing cluster topology\n")
+	slog.Info("Manually refreshing cluster topology")
 	return c.discoverTopology()
 }
 

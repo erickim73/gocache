@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/erickim73/gocache/internal/cache"
@@ -28,50 +29,64 @@ func (m *Migrator) MigrateToNewNode(newNodeID string, newNodeAddr string) error 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	fmt.Printf("[MIGRATION] Starting migration to %s at %s\n", newNodeID, newNodeAddr)
-	
+	slog.Info("Migration started",
+		"operation", "add_node",
+		"node_id", newNodeID,
+		"address", newNodeAddr,
+	)
+
 	// calculate which keys need to move by determining which has range will be owned by new node
-	fmt.Printf("[MIGRATION] Calculating migration tasks...\n")
+	slog.Debug("Calculating migration tasks", "node_id", newNodeID)
+	
 	tasks := m.hashRing.CalculateMigrations(newNodeID)
 
-	if len(tasks) == 0 {
-		fmt.Printf("[MIGRATION] No keys to migrate\n")
-	} else {
-		fmt.Printf("[MIGRATION] Found %d migration tasks\n", len(tasks))
-	}
-
 	// add node to hash ring
-	fmt.Printf("[MIGRATION] Adding %s to hash ring with address %s\n", newNodeID, newNodeAddr)
 	m.hashRing.AddShard(newNodeID)
 	m.hashRing.SetNodeAddress(newNodeID, newNodeAddr)
 
-
 	if len(tasks) == 0 {
-		fmt.Printf("[MIGRATION] No keys to migrate\n")
-		// add node to ring even if no data to migrate
-		m.hashRing.AddShard(newNodeID)
-		m.hashRing.SetNodeAddress(newNodeID, newNodeAddr)
+		slog.Info("No migration tasks required",
+			"node_id", newNodeID,
+			"reason", "no keys to migrate",
+		)
 		return nil
 	}
 
-	fmt.Printf("[MIGRATION] Found %d migration tasks\n", len(tasks))
+	slog.Info("Migration tasks calculated",
+		"node_id", newNodeID,
+		"task_count", len(tasks),
+	)
 
 	// track total keys migrated for logging
 	totalKeysMigrated := 0
 
 	// execute each migration task
 	for i, task := range tasks {
-		fmt.Printf("[MIGRATION] Task %d/%d: %s -> %s (has range [%d, %d))])\n", i + 1, len(tasks), task.FromNode, task.ToNode, task.StartHash, task.EndHash)
+		slog.Info("Executing migration task",
+			"task_number", i+1,
+			"total_tasks", len(tasks),
+			"from_node", task.FromNode,
+			"to_node", task.ToNode,
+			"start_hash", task.StartHash,
+			"end_hash", task.EndHash,
+		)
 
 		// get keys that fall within this hash range
 		keys := m.cache.GetKeysInHashRange(task.StartHash, task.EndHash, m.hashRing.Hash)
 
 		if len(keys) == 0 {
-			fmt.Printf("[MIGRATION] Task %d: No keys in this range\n", i + 1)
+			slog.Debug("No keys in hash range",
+				"task_number", i+1,
+				"start_hash", task.StartHash,
+				"end_hash", task.EndHash,
+			)
 			continue
 		}
 
-		fmt.Printf("[MIGRATION] Task %d: Found %d keys to migrate\n", i + 1, len(keys))
+		slog.Info("Keys identified for migration",
+			"task_number", i+1,
+			"key_count", len(keys),
+		)
 
 		// get values for those keys
 		values := make(map[string]string)
@@ -83,7 +98,12 @@ func (m *Migrator) MigrateToNewNode(newNodeID string, newNodeAddr string) error 
 		}
 
 		// transfer keys to target node over network
-		fmt.Printf("[MIGRATION] Task %d: Transferring keys to %s\n", i + 1, newNodeAddr)
+		slog.Info("Transferring keys to target",
+			"task_number", i+1,
+			"target_address", newNodeAddr,
+			"key_count", len(keys),
+		)
+
 		err := TransferKeysBatch(newNodeAddr, keys, values, 100) // 100 keys per batch
 		if err != nil {
 			// if transfer fails, abort entire migration
@@ -91,23 +111,35 @@ func (m *Migrator) MigrateToNewNode(newNodeID string, newNodeAddr string) error 
 		}
 
 		// verify transfer before deleting
-		fmt.Printf("[MIGRATION] Task %d: Verifying transfer...\n", i + 1)
+		slog.Debug("Verifying transfer", "task_number", i+1)
+
 		err = VerifyTransfer(newNodeAddr, keys)
 		if err != nil {
 			return fmt.Errorf("task %d verification failed: %v", i + 1, err)
 		}
 
 		// delete from local cache only after successful transfer
-		fmt.Printf("[MIGRATION] Task %d: Deleting keys from local cache\n", i + 1)
+		slog.Debug("Deleting migrated keys from local cache",
+			"task_number", i+1,
+			"key_count", len(keys),
+		)
 		for _, key := range keys {
 			m.cache.Delete(key)
 		}
 
 		totalKeysMigrated += len(keys)
-		fmt.Printf("[MIGRATION] Task %d complete: %d keys migrated\n", i + 1, len(keys))
+		slog.Info("Migration task completed",
+			"task_number", i+1,
+			"keys_migrated", len(keys),
+		)
 	}
 
-	fmt.Printf("[MIGRATION] Migration complete: %d total keys migrated to %s\n", totalKeysMigrated, newNodeID)
+	slog.Info("Migration completed successfully",
+		"operation", "add_node",
+		"node_id", newNodeID,
+		"total_keys_migrated", totalKeysMigrated,
+		"tasks_completed", len(tasks),
+	)
 
 	return nil
 }
@@ -117,25 +149,38 @@ func (m *Migrator) MigrateFromLeavingNode(leavingNodeID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	fmt.Printf("[MIGRATION] Handling departure of node %s\n", leavingNodeID)
+	slog.Info("Migration started",
+		"operation", "remove_node",
+		"node_id", leavingNodeID,
+	)
 
 	// calculate where keys should move
 	tasks := m.hashRing.CalculateMigrationsForRemoval(leavingNodeID)
 
 	if len(tasks) == 0 {
-		fmt.Printf("[MIGRATION] No keys to migrate\n")
+		slog.Info("No migration tasks required",
+			"node_id", leavingNodeID,
+			"reason", "no keys to migrate",
+		)
 		m.hashRing.RemoveShard(leavingNodeID)
 		m.hashRing.SetNodeAddress(leavingNodeID, "")
 		return nil
 	}
 
-	fmt.Printf("[MIGRATION] Found %d migration tasks for node removal\n", len(tasks))
+	slog.Info("Migration tasks calculated for removal",
+		"node_id", leavingNodeID,
+		"task_count", len(tasks),
+	)
 
 	totalKeysMigrated := 0
 
 	// execute each migration task
 	for i, task := range tasks {
-		fmt.Printf("[MIGRATION] Task %d/%d: Migrating to %s\n", i + 1, len(tasks), task.ToNode)
+		slog.Info("Executing removal migration task",
+			"task_number", i+1,
+			"total_tasks", len(tasks),
+			"to_node", task.ToNode,
+		)
 
 		// get keys in this range
 		keys := m.cache.GetKeysInHashRange(task.StartHash, task.EndHash, m.hashRing.Hash)
@@ -157,7 +202,12 @@ func (m *Migrator) MigrateFromLeavingNode(leavingNodeID string) error {
 		targetAddr := m.hashRing.GetNodeAddress(task.ToNode)
 
 		// transfer keys
-		fmt.Printf("[MIGRATION] Task %d: Transferring %d keys to %s\n", i + 1, len(keys), targetAddr)
+		slog.Info("Transferring keys to successor",
+			"task_number", i+1,
+			"target_node", task.ToNode,
+			"target_address", targetAddr,
+			"key_count", len(keys),
+		)
 		err := TransferKeysBatch(targetAddr, keys, values, 100)
 		if err != nil {
 			return fmt.Errorf("task %d transfer failed: %v", i + 1, err)
@@ -178,10 +228,15 @@ func (m *Migrator) MigrateFromLeavingNode(leavingNodeID string) error {
 	}
 
 	// remove node from hash ring
-	fmt.Printf("[MIGRATION] Removing %s from hash ring\n", leavingNodeID)
+	slog.Info("Removing node from hash ring", "node_id", leavingNodeID)
 	m.hashRing.RemoveShard(leavingNodeID)
 
-	fmt.Printf("[MIGRATION] Removal complete: %d total keys migrated away from %s\n", totalKeysMigrated, leavingNodeID)
+	slog.Info("Removal migration completed successfully",
+		"operation", "remove_node",
+		"node_id", leavingNodeID,
+		"total_keys_migrated", totalKeysMigrated,
+		"tasks_completed", len(tasks),
+	)
 
 	return nil
 }
