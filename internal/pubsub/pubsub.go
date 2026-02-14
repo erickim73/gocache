@@ -237,3 +237,46 @@ func (ps *PubSub) cleanupConnection(conn net.Conn) {
 		}
 	}
 }
+
+// returns number of subscribers for a given channel
+func (ps *PubSub) GetSubscriberCount(channel string) int {
+	ps.mu.RLock()
+	defer ps.mu.RUnlock()
+
+	if subscribers, exists := ps.subscribers[channel]; exists {
+		return len(subscribers)
+	}
+
+	return 0
+}
+
+// returns all active channels that have at least one subscriber
+func (ps *PubSub) GetChannels() []string {
+	ps.mu.RLock()
+	defer ps.mu.RUnlock()
+
+	channels := make([]string, 0, len(ps.subscribers))
+	for channel := range ps.subscribers {
+		channels = append(channels, channel)
+	}
+
+	return channels
+}
+
+// returns all channels that a connection is subscribed to
+func (ps *PubSub) GetSubscribedChannels(conn net.Conn) []string {
+	ps.mu.RLock()
+	defer ps.mu.RUnlock()
+
+	channelSet, exists := ps.subscriptions[conn]
+	if !exists {
+		return []string{}
+	}
+
+	channels := make([]string, 0, len(channelSet))
+	for channel := range channelSet {
+		channels = append(channels, channel)
+	}
+
+	return channels
+}
