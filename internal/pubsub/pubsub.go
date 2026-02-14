@@ -1,11 +1,12 @@
 package pubsub
 
 import (
+	"fmt"
+	"log/slog"
 	"net"
 	"sync"
 
 	"github.com/erickim73/gocache/pkg/protocol"
-
 )
 
 // represents a single client connection that is subscribed to one or more channels
@@ -123,4 +124,70 @@ func (s *Subscriber) sendMessages() {
 			return
 		}
 	}
+}
+
+// sends a message to all subscribers of a channel. returns the number of subscribers who received the message
+func (ps *PubSub) Publish(channel string, message string) int {
+	ps.mu.RLock()
+	defer ps.mu.RUnlock()
+
+	// get all subscribers for this channel
+	subscribers, exists := ps.subscribers[channel]
+	if !exists || len(subscribers) == 0 {
+		return 0
+	}
+
+	count := 0
+
+	// send to each subscriber
+	for _, subscriber := range subscribers {
+		select {
+		case subscriber.messages <- message:
+			// message successfully queued in subscriber's buffer
+			count++
+		default:
+			// subscriber's channel is full. drop message
+		}
+	}
+
+	return count
+}
+
+// removes a connection from a channel's subscriber list
+func (ps *PubSub) Unsubscribe(conn net.Conn, channel string) error {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	// check if this connection has any subscriptions
+	channelSet, exists := ps.subscriptions[conn]
+	if !exists {
+		slog.Error("Connection not subscribed to any channels")
+		return fmt.Errorf("connection not subscribed to any channels")
+	}
+
+	// check if subscribed to this specific channel
+	if !channelSet[channel] {
+		slog.Error("Connection not subscribed to channel", "channel", channel)
+		return fmt.Errorf("connection not subscribed to channel: %s", channel)
+	}
+
+	// remove channel from connection's subscription set
+	delete(channelSet, channel)
+
+	// remove connection from channel's subscriber set
+	if subscribers, ok := ps.subscribers[channel]; ok {
+		delete(subscribers, conn)
+
+		// if channel has no more subscribers, clean up channel
+		if len(subscribers) == 0 {
+			delete(ps.subscribers, channel)
+		}
+	}
+
+	// check if connection is still subscribed to any other channel
+	if len(channelSet) == 0 {
+		ps.cleanupConnection(conn)
+	}
+
+	return nil
 }
