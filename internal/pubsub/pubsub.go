@@ -191,3 +191,49 @@ func (ps *PubSub) Unsubscribe(conn net.Conn, channel string) error {
 
 	return nil
 }
+
+// forcefully removes a connection and all its subscriptions
+func (ps *PubSub) RemoveConnection (conn net.Conn) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	// find al channels this connection is subscribed to
+	channelSet, exists := ps.subscriptions[conn]
+	if !exists {
+		return
+	}
+
+	// unsubscribe from each channel
+	for channel := range channelSet {
+		// remove from channel's subscriber set
+		if subscribers, ok := ps.subscribers[channel]; ok {
+			delete(subscribers, conn)
+			
+			// clean up empty channel entires
+			if len(subscribers) == 0 {
+				delete(ps.subscribers, channel)
+			}
+		}
+	}
+
+	// clean up connection's subscriber struct
+	ps.cleanupConnection(conn)
+}
+
+// removes a connection's Subscriber struct and stops its goroutine
+func (ps *PubSub) cleanupConnection(conn net.Conn) {
+	delete(ps.subscriptions, conn)
+
+	// find subscriber 
+	for _, subscribers := range ps.subscribers {
+		if subscriber, ok := subscribers[conn]; ok {
+			// close message channel
+			close(subscriber.messages)
+
+			// signal done channel for shutdown
+			close(subscriber.done)
+
+			break
+		}
+	}
+}
