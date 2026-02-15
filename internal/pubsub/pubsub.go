@@ -9,10 +9,16 @@ import (
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
+// carry both channel name and message content
+type Message struct {
+	Channel string // which channel this message was published to
+	Content string // actual message content
+}
+
 // represents a single client connection that is subscribed to one or more channels
 type Subscriber struct {
 	conn net.Conn // tcp connection to this subscriber
-	messages chan string // buffered channel for queueing messages to send
+	messages chan Message // buffered channel for queueing messages to send
 	done chan struct{} // signal channel to stop sendMessages goroutine
 }
 
@@ -51,7 +57,7 @@ func (ps *PubSub) Subscribe(conn net.Conn, channel string) error {
 		// create a subscriber struct since this is a new connection
 		subscriber = &Subscriber{
 			conn: conn,
-			messages: make(chan string, 100),
+			messages: make(chan Message, 100),
 			done: make(chan struct{}),
 		}
 		
@@ -80,7 +86,7 @@ func (ps *PubSub) Subscribe(conn net.Conn, channel string) error {
 		if subscriber == nil {
 			subscriber = &Subscriber{
 				conn: conn,
-				messages: make(chan string, 100),
+				messages: make(chan Message, 100),
 				done: make(chan struct{}),
 			}
 			go subscriber.sendMessages()
@@ -110,7 +116,7 @@ func (s *Subscriber) sendMessages() {
 			}
 
 			// encode message in resp format
-			encoded := protocol.EncodeSimpleString(msg)
+			encoded := protocol.EncodePubSubMessage(msg.Channel, msg.Content)
 
 			// write to connection
 			_, err := s.conn.Write([]byte(encoded))
@@ -139,14 +145,24 @@ func (ps *PubSub) Publish(channel string, message string) int {
 
 	count := 0
 
+	// create message struct with channel information
+	msg := Message{
+		Channel: channel,
+		Content: message,
+	}
+
 	// send to each subscriber
 	for _, subscriber := range subscribers {
 		select {
-		case subscriber.messages <- message:
+		case subscriber.messages <- msg:
 			// message successfully queued in subscriber's buffer
 			count++
 		default:
 			// subscriber's channel is full. drop message
+			slog.Warn("Subscriber buffer full, dropping message",
+				"channel", channel,
+				"remote_addr", subscriber.conn.RemoteAddr(),
+			)
 		}
 	}
 
@@ -161,13 +177,18 @@ func (ps *PubSub) Unsubscribe(conn net.Conn, channel string) error {
 	// check if this connection has any subscriptions
 	channelSet, exists := ps.subscriptions[conn]
 	if !exists {
-		slog.Error("Connection not subscribed to any channels")
+		slog.Debug("Connection not subscribed to any channels",
+			"remote_addr", conn.RemoteAddr(),
+		)
 		return fmt.Errorf("connection not subscribed to any channels")
 	}
 
 	// check if subscribed to this specific channel
 	if !channelSet[channel] {
-		slog.Error("Connection not subscribed to channel", "channel", channel)
+		slog.Debug("Connection not subscribed to channel",
+			"channel", channel,
+			"remote_addr", conn.RemoteAddr(),
+		)
 		return fmt.Errorf("connection not subscribed to channel: %s", channel)
 	}
 
@@ -218,6 +239,11 @@ func (ps *PubSub) RemoveConnection (conn net.Conn) {
 
 	// clean up connection's subscriber struct
 	ps.cleanupConnection(conn)
+
+	slog.Debug("Removed connection from all pub/sub channels",
+		"remote_addr", conn.RemoteAddr(),
+		"channels_count", len(channelSet),
+	)
 }
 
 // removes a connection's Subscriber struct and stops its goroutine
