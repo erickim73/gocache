@@ -121,3 +121,36 @@ func ParseRedirect(response string) (*RedirectResponse, error) {
 func (r *RedirectResponse) Address() string {
 	return fmt.Sprintf("%s:%s", r.LeaderHost, r.LeaderPort)
 }
+
+// encodes a published message to subscribers in RESP format
+func EncodePubSubMessage(channel string, message string) string {
+	// use existing EncodeArray function with 3 elements ["message", "news", "hello"]
+	return EncodeArray([]interface{}{"message", channel, message})
+}
+
+// encodes a subscription confirmation on RESP format
+func EncodeSubscribeConfirmation(channel string, subscriptionCount int) string {
+	// use existing EncodeArray function with 3 elements ["subscribe", "news", 1]
+	return EncodeArray([]interface{}{"subscribe", channel, subscriptionCount})
+}
+
+// encodes an unsubscribe confirmation in RESP format
+func EncodeUnsubscribeConfirmation(channel string, remainingCount int) string {
+	// if channel is empty, unsubscribe from all channels
+	if channel == "" {
+		// manually construct response with null bulk string
+		result := "*3\r\n"
+		result += EncodeBulkString("unsubscribe", false)
+		result += "$-1\r\n"
+		result += ":" + strconv.Itoa(remainingCount) + "\r\n"
+		return result
+	}
+
+	// ["unsubscribe", "news", 0]
+	return EncodeArray([]interface{}{"unsubscribe", channel, remainingCount})
+}
+
+// encodes response to a publish command
+func EncodePublishResponse(subscriberCount int) string {
+	return EncodeInteger(subscriberCount)
+}
