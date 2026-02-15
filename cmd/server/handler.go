@@ -13,14 +13,14 @@ import (
 	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/internal/replication"
 	"github.com/erickim73/gocache/internal/server"
+	"github.com/erickim73/gocache/internal/pubsub"
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
-
-const (
-	// redis-style redirect error
-	ErrMovedFormat = "-MOVED %s\r\n"
-)
+// tracks whether a connection is in subscriber mode
+type ConnectionState struct {
+	subscriberMode bool // is connection subscribed to any channels
+}
 
 // returns true if the operation must be handled by the leader
 func requiresLeader(operation string) bool {
@@ -35,8 +35,11 @@ func requiresLeader(operation string) bool {
 }
 
 // handle client commands and write to aof
-func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, nodeState *server.NodeState) {
+func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, nodeState *server.NodeState, ps *pubsub.PubSub) {
 	defer conn.Close()
+
+	// when connection closes, remove from all pub/sub channels
+	defer ps.RemoveConnection(conn)
 
 	// track connections
 	cache.GetMetrics().IncrementActiveConnections()
@@ -44,6 +47,11 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 
 	// log new connection
 	remoteAddr := conn.RemoteAddr().String()
+
+	// track connection state
+	state := &ConnectionState{
+		subscriberMode: false,
+	}
 
 	// read from client
 	reader := bufio.NewReader(conn)
@@ -66,6 +74,53 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 
 		// start timing request here
 		startTime := time.Now()
+
+		// check if connection in subscriber mode
+		if state.subscriberMode {
+			allowedCommands := map[string]bool{
+				"SUBSCRIBE":   true,
+				"UNSUBSCRIBE": true,
+				"PSUBSCRIBE":  true,  // pattern subscribe 
+				"PUNSUBSCRIBE": true, // pattern unsubscribe 
+				"PING":        true,  // health check always allowed
+				"QUIT":        true,  // graceful disconnect always allowed
+			}
+
+			cmdStr, ok := command.(string)
+			if !ok || !allowedCommands[cmdStr] {
+				// reject non-pub/sub commands in subscriber mode
+				conn.Write([]byte(protocol.EncodeError("ERR only (P)SUBSCRIBE / (P)UNSUBSCRIBE / PING / QUIT allowed in this context")))
+			}
+
+			// record latency for rejected command
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+			continue
+		}
+
+		// handle pub/sub commands
+		switch command {
+		case "SUBSCRIBE":
+			// subscribe enters subscriber mode
+			handleSubscribe(conn, resultSlice, ps, state)
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+			continue
+
+		case "UNSUBSCRIBE":
+			// unsubscribe may exit subscriber mode if no channels remain
+			handleUnsubscribe(conn, resultSlice, ps, state)
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+			continue
+
+		case "PUBLISH":
+			// publish can be used in normal mode. allows one connection to publish while others subscribe
+			handlePublish(conn, resultSlice, ps)
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+			continue
+		}
 
 		// handle CLUSTER commands first
 		if command == "CLUSTER" {
