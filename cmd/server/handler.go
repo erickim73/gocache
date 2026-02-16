@@ -20,6 +20,11 @@ import (
 // tracks whether a connection is in subscriber mode
 type ConnectionState struct {
 	subscriberMode bool // is connection subscribed to any channels
+
+	// transaction state tracking
+	inTransaction bool // true when client has called MULTI but not yet EXEC/DISCARD
+	commandQueue [][]interface{} // queued commands waiting for EXEC (stores raw command slices)
+	transactionError error // set if command validation failed during queueing
 }
 
 // returns true if the operation must be handled by the leader
@@ -32,6 +37,26 @@ func requiresLeader(operation string) bool {
 	default:
 		return true // unknown operations go to leader for safety
 	}
+}
+
+// validate if a command can be queued in a transaction
+func canQueueCommand(command string) bool {
+	// transaction control commands can't be nested
+	if command == "MULTI" || command == "EXEC" || command == "DISCARD" {
+		return false
+	}
+
+	// pub/sub commands can't be used in transactions
+	if command == "SUBSCRIBE" || command == "UNSUBSCRIBE" || command == "PUBLISH" || command == "PSUBSCRIBE" || command == "PUNSUBSCRIBE" {
+		return false
+	}
+
+	// cluster commands shouldn't be in transactions
+	if command == "CLUSTER" {
+		return false
+	}
+
+	return true
 }
 
 // handle client commands and write to aof
@@ -51,6 +76,9 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 	// track connection state
 	state := &ConnectionState{
 		subscriberMode: false,
+		inTransaction: false,
+		commandQueue: nil,
+		transactionError: nil,
 	}
 
 	// read from client
@@ -96,7 +124,29 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 				cache.GetMetrics().RecordOperationDuration(duration.Seconds())
 				continue
 			}
+		}
 
+		// check if we're in transaction mode and should queue this command
+		cmdStr, ok := command.(string)
+		if ok && state.inTransaction {
+			// transaction control commands are handled immediately, not queued
+			if cmdStr == "EXEC" || cmdStr == "DISCARD" {
+				// handled by switch statement
+			} else if canQueueCommand(cmdStr) {
+				// queue command for later execution during EXEC
+				queueCommandForTransaction(conn, state, resultSlice)
+
+				duration := time.Since(startTime)
+				cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+				continue
+			} else {
+				// command can't be queued
+				conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("ERR command '%s cannot be used in a transaction", cmdStr))))
+
+				duration := time.Since(startTime)
+				cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+				continue
+			}
 		}
 
 		// handle pub/sub commands
