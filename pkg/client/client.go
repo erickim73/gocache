@@ -316,8 +316,73 @@ func (c *Client) NewTransaction() *TransactionPipeline {
 	}
 }
 
+// add set command to transaction pipeline
+func (tp *TransactionPipeline) Set(key, value string) *TransactionPipeline {
+	tp.commands = append(tp.commands, []interface{}{"SET", key, value})
+	return tp
+}
 
+// add set with ttl command to transaction pipeline
+func (tp *TransactionPipeline) SetWithTTL(key, value string, ttl int) *TransactionPipeline {
+	tp.commands = append(tp.commands, []interface{}{"SET", key, value, fmt.Sprintf("%d", ttl)})
+	return tp
+}
 
+// add get command to transaction pipeline
+func (tp *TransactionPipeline) Get(key string) *TransactionPipeline {
+	tp.commands = append(tp.commands, []interface{}{"GET", key})
+	return tp
+}
+
+// add del command to transaction pipeline
+func (tp *TransactionPipeline) Del(key string) *TransactionPipeline {
+	tp.commands = append(tp.commands, []interface{}{"DEL", key})
+	return tp
+}
+
+// execute the transaction pipeline
+func (tp *TransactionPipeline) Execute() ([]string, error) {
+	// start transaction
+	if err := tp.client.Multi(); err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %v", err)
+	}
+	tp.started = true
+
+	// send all queued commands
+	// each command should receive "QUEUED" response
+	for _, cmd := range tp.commands {
+		response, err := tp.client.executeCommandWithRedirect(cmd)
+		if err != nil {
+			// transaction failed, try to discard
+			tp.client.Discard()
+			return nil, fmt.Errorf("command failed during transaction: %v", err)
+		}
+
+		// check that command was queued successfully
+		if response != "QUEUED" {
+			// got an error instead of QUEUED, transaction is poisoned
+			tp.client.Discard()
+			return nil, fmt.Errorf("command rejected during transaction: %s", response)
+		}
+	}
+
+	// execute transaction
+	results, err := tp.client.Exec()
+	if err != nil {
+		return nil, fmt.Errorf("EXEC failed: %v", err)
+	}
+
+	return results, nil
+}
+
+// cancel transaction pipeline
+func (tp *TransactionPipeline) Cancel() error {
+	if !tp.started {
+		return nil // Nothing to cancel
+	}
+
+	return tp.client.Discard()
+}
 
 // sends a generic command to the server and returns the response
 func (c *Client) SendCommand(args ...string) (string, error) {
