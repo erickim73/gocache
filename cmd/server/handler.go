@@ -267,6 +267,21 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 			duration := time.Since(startTime)
 			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
 
+		case "MULTI":
+			handleMulti(conn, state)
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+
+		case "EXEC":
+			leader := nodeState.GetLeader()
+			handleExec(conn, state, cache, aof, leader)
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+
+		case "DISCARD":
+			handleDiscard(conn, state)
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
 		default:
 			conn.Write([]byte(protocol.EncodeError("Unknown command " + command.(string))))
 			// record latency for unknown commands
@@ -370,7 +385,7 @@ func handleExec(conn net.Conn, state *ConnectionState, cache *cache.Cache, aof *
 
 	// if any command has validation error during queueing, abort transaction
 	if state.transactionError != nil {
-		conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("EXECABORT Transaction discarded because of previous errors."))))
+		conn.Write([]byte(protocol.EncodeError("EXECABORT Transaction discarded because of previous errors.")))
 		slog.Debug("Transaction aborted due to validation error", 
 			"error", state.transactionError,
 		)
@@ -424,6 +439,29 @@ func handleExec(conn net.Conn, state *ConnectionState, cache *cache.Cache, aof *
 	
 	slog.Debug("Transaction completed successfully",
 		"commands_executed", len(results),
+	)
+}
+
+// cancel a transaction with discard
+func handleDiscard(conn net.Conn, state *ConnectionState) {
+	// check if we're in a transaction
+	if !state.inTransaction {
+		conn.Write([]byte(protocol.EncodeError("ERR DISCARD without MULTI")))
+		slog.Debug("DISCARD called without MULTI")
+		return
+	}
+
+	// clear transaction state
+	queuedCount := len(state.commandQueue)
+	state.inTransaction = false
+	state.commandQueue = nil
+	state.transactionError = nil
+
+	// send ok response
+	conn.Write([]byte(protocol.EncodeSimpleString("OK")))
+
+	slog.Debug("Transaction discarded",
+		"queued_commands_discarded", queuedCount,
 	)
 }
 
