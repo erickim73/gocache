@@ -10,6 +10,7 @@ import (
 	"github.com/erickim73/gocache/internal/cluster"
 	"github.com/erickim73/gocache/internal/config"
 	"github.com/erickim73/gocache/internal/persistence"
+	"github.com/erickim73/gocache/internal/pubsub"
 	"github.com/erickim73/gocache/internal/replication"
 	"github.com/erickim73/gocache/internal/server"
 	"github.com/erickim73/gocache/internal/metrics"
@@ -57,6 +58,9 @@ func startSimpleMode(cfg *config.Config) {
 		return
 	}
 
+	// create pubsub
+	ps := pubsub.NewPubSub()
+
 	// create node state
 	nodeState, err := server.NewNodeState(cfg.Role, nil, "")
 
@@ -101,7 +105,7 @@ func startSimpleMode(cfg *config.Config) {
 		}
 
 		// handle connection in a separate goroutine
-		go handleConnection(conn, myCache, aof, nodeState)
+		go handleConnection(conn, myCache, aof, nodeState, ps)
 	}
 }
 
@@ -499,6 +503,8 @@ func startClientListener(port int, myCache *cache.Cache, aof *persistence.AOF, n
 	}
 	defer listener.Close()
 
+	ps := pubsub.NewPubSub()
+
 	slog.Info("Listening for clients", "port", port)
 
 	for {
@@ -507,7 +513,7 @@ func startClientListener(port int, myCache *cache.Cache, aof *persistence.AOF, n
 			slog.Warn("Error accepting connection", "error", err)
 			continue
 		}
-		go handleConnection(conn, myCache, aof, nodeState)
+		go handleConnection(conn, myCache, aof, nodeState, ps)
 	}
 }
 

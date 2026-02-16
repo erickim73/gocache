@@ -4,23 +4,23 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"strconv"
 	"time"
-	"log/slog"
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/persistence"
+	"github.com/erickim73/gocache/internal/pubsub"
 	"github.com/erickim73/gocache/internal/replication"
 	"github.com/erickim73/gocache/internal/server"
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
-
-const (
-	// redis-style redirect error
-	ErrMovedFormat = "-MOVED %s\r\n"
-)
+// tracks whether a connection is in subscriber mode
+type ConnectionState struct {
+	subscriberMode bool // is connection subscribed to any channels
+}
 
 // returns true if the operation must be handled by the leader
 func requiresLeader(operation string) bool {
@@ -35,8 +35,11 @@ func requiresLeader(operation string) bool {
 }
 
 // handle client commands and write to aof
-func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, nodeState *server.NodeState) {
+func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, nodeState *server.NodeState, ps *pubsub.PubSub) {
 	defer conn.Close()
+
+	// when connection closes, remove from all pub/sub channels
+	defer ps.RemoveConnection(conn)
 
 	// track connections
 	cache.GetMetrics().IncrementActiveConnections()
@@ -44,6 +47,11 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 
 	// log new connection
 	remoteAddr := conn.RemoteAddr().String()
+
+	// track connection state
+	state := &ConnectionState{
+		subscriberMode: false,
+	}
 
 	// read from client
 	reader := bufio.NewReader(conn)
@@ -66,6 +74,54 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 
 		// start timing request here
 		startTime := time.Now()
+
+		// check if connection in subscriber mode
+		if state.subscriberMode {
+			allowedCommands := map[string]bool{
+				"SUBSCRIBE":    true,
+				"UNSUBSCRIBE":  true,
+				"PSUBSCRIBE":   true, // pattern subscribe
+				"PUNSUBSCRIBE": true, // pattern unsubscribe
+				"PING":         true, // health check always allowed
+				"QUIT":         true, // graceful disconnect always allowed
+			}
+
+			cmdStr, ok := command.(string)
+			if !ok || !allowedCommands[cmdStr] {
+				// reject non-pub/sub commands in subscriber mode
+				conn.Write([]byte(protocol.EncodeError("ERR only (P)SUBSCRIBE / (P)UNSUBSCRIBE / PING / QUIT allowed in this context")))
+
+				// record latency for rejected command
+				duration := time.Since(startTime)
+				cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+				continue
+			}
+
+		}
+
+		// handle pub/sub commands
+		switch command {
+		case "SUBSCRIBE":
+			// subscribe enters subscriber mode
+			handleSubscribe(conn, resultSlice, ps, state)
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+			continue
+
+		case "UNSUBSCRIBE":
+			// unsubscribe may exit subscriber mode if no channels remain
+			handleUnsubscribe(conn, resultSlice, ps, state)
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+			continue
+
+		case "PUBLISH":
+			// publish can be used in normal mode. allows one connection to publish while others subscribe
+			handlePublish(conn, resultSlice, ps)
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+			continue
+		}
 
 		// handle CLUSTER commands first
 		if command == "CLUSTER" {
@@ -170,6 +226,161 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 	}
 }
 
+// process subscribe commands
+func handleSubscribe(conn net.Conn, resultSlice []interface{}, ps *pubsub.PubSub, state *ConnectionState) {
+	// validate command format
+	if len(resultSlice) < 2 {
+		conn.Write([]byte(protocol.EncodeError("ERR wrong number of arguments for 'subscribe' command")))
+		return
+	}
+
+	// subscribe to each channel specified in command
+	for i := 1; i < len(resultSlice); i++ {
+		channel, ok := resultSlice[i].(string)
+		if !ok {
+			conn.Write([]byte(protocol.EncodeError("ERR invalid channel")))
+			return
+		}
+
+		// call PubSub.Subscribe to add this connection to the channel
+		err := ps.Subscribe(conn, channel)
+		if err != nil {
+			slog.Error("Failed to subscribe",
+				"channel", channel,
+				"error", err,
+			)
+			conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("ERR subscribe failed: %v", err))))
+			return
+		}
+
+		// get total number of channels this connection is subscribed to
+		subscribedChannels := ps.GetSubscribedChannels(conn)
+		totalSubscriptions := len(subscribedChannels)
+
+		// send subscription confirmation in resp format
+		confirmation := protocol.EncodeSubscribeConfirmation(channel, totalSubscriptions)
+		conn.Write([]byte(confirmation))
+
+		slog.Debug("Client subscribed to channel",
+			"channel", channel,
+			"total_subscriptions", totalSubscriptions,
+			"remote_addr", conn.RemoteAddr(),
+		)
+	}
+
+	// enter subscriber mode
+	state.subscriberMode = true
+}
+
+// process unsubscribe commands
+func handleUnsubscribe(conn net.Conn, resultSlice []interface{}, ps *pubsub.PubSub, state *ConnectionState) {
+	// case 1: unsubscribe with no arguments: unsubscribe from all channels
+	if len(resultSlice) == 1 {
+		channels := ps.GetSubscribedChannels(conn)
+
+		// unsubscribe from each channel the connection is subscribed to
+		for _, channel := range channels {
+			err := ps.Unsubscribe(conn, channel)
+			if err != nil {
+				slog.Error("Failed to unsubscribe",
+					"channel", channel,
+					"error", err,
+				)
+			}
+
+			// get remaining subscription count
+			remaining := len(ps.GetSubscribedChannels(conn))
+
+			// send confirmation for this channel
+			confirmation := protocol.EncodeUnsubscribeConfirmation(channel, remaining)
+			conn.Write([]byte(confirmation))
+
+			slog.Debug("Client unsubscribed from channel",
+				"channel", channel,
+				"remaining_subscriptions", remaining,
+				"remote_addr", conn.RemoteAddr(),
+			)
+		}
+
+		// exit subscriber mode since we're no longer subscribed to anything
+		state.subscriberMode = false
+		return
+	}
+
+	// case 2: unsubscribe from specific channels
+	for i := 1; i < len(resultSlice); i++ {
+		channel, ok := resultSlice[i].(string)
+		if !ok {
+			conn.Write([]byte(protocol.EncodeError("ERR invalid channel name")))
+			return
+		}
+
+		// unsubscribe from specific channel
+		err := ps.Unsubscribe(conn, channel)
+		if err != nil {
+			slog.Debug("Unsubscribe attempted on non-subscribed channel",
+				"channel", channel,
+				"error", err,
+			)
+		}
+
+		// get remaining subscription count
+		remaining := len(ps.GetSubscribedChannels(conn))
+
+		// send confirmation
+		confirmation := protocol.EncodeUnsubscribeConfirmation(channel, remaining)
+		conn.Write([]byte(confirmation))
+
+		slog.Debug("Client unsubscribed from channel",
+			"channel", channel,
+			"remaining_subscriptions", remaining,
+			"remote_addr", conn.RemoteAddr(),
+		)
+	}
+
+	// check if we should exit subscriber mode
+	if len(ps.GetSubscribedChannels(conn)) == 0 {
+		state.subscriberMode = false
+	}
+}
+
+// process publish commands
+func handlePublish(conn net.Conn, resultSlice []interface{}, ps *pubsub.PubSub) {
+	// valid command format
+	if len(resultSlice) != 3 {
+		conn.Write([]byte(protocol.EncodeError("ERR wrong number of arguments for 'publish' command")))
+		return
+	}
+
+	// extract channel name
+	channel, ok := resultSlice[1].(string)
+	if !ok {
+		conn.Write([]byte(protocol.EncodeError("ERR invalid channel name")))
+		return
+	}
+
+	// extract message content
+	message, ok := resultSlice[2].(string)
+	if !ok {
+		conn.Write([]byte(protocol.EncodeError("ERR invalid message")))
+		return
+	}
+
+	// publish message to all subscribers of this channel
+	count := ps.Publish(channel, message)
+
+	// send back number of subscribers as an integer
+	response := protocol.EncodePublishResponse(count)
+	conn.Write([]byte(response))
+
+	slog.Debug("Message published",
+		"channel", channel,
+		"subscribers", count,
+		"message_length", len(message),
+	)
+}
+
+// process set commands
 func handleSet(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader) {
 	if len(resultSlice) < 3 || len(resultSlice) > 4 {
 		conn.Write([]byte(protocol.EncodeError("Length of command doesn't match")))
@@ -207,9 +418,9 @@ func handleSet(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, aof
 			)
 		}
 	}
-	
+
 	// write to aof
-	ttlSecondsStr := strconv.FormatInt(ttlSeconds, 10) 
+	ttlSecondsStr := strconv.FormatInt(ttlSeconds, 10)
 	aofCommand := protocol.EncodeArray([]interface{}{"SET", key, value, ttlSecondsStr})
 	err := aof.Append(aofCommand)
 	if err != nil {
