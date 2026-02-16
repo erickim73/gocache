@@ -24,6 +24,9 @@ type Subscriber struct {
 
 // manages all publish/subscribe operations in cache system
 type PubSub struct {
+	// map for O(1) subscriber lookup. ensures exactly one subscriber per connection
+	connectionToSubscriber map[net.Conn]*Subscriber
+	
 	// map channel names to set of connections subscribed to that channel
 	// example: subscribers["news"] = {conn1: subscriber1, conn2: subscriber2}
 	subscribers map[string]map[net.Conn]*Subscriber
@@ -39,6 +42,7 @@ type PubSub struct {
 // creates and initializes a new pubsub manager
 func NewPubSub() *PubSub {
 	return &PubSub{
+		connectionToSubscriber: make(map[net.Conn]*Subscriber),
 		subscribers: make(map[string]map[net.Conn]*Subscriber),
 		subscriptions: make(map[net.Conn]map[string]bool),
 	}
@@ -50,8 +54,7 @@ func (ps *PubSub) Subscribe(conn net.Conn, channel string) error {
 	defer ps.mu.Unlock()
 
 	// check if connection has a subscriber struct
-	var subscriber *Subscriber
-	channelSet, exists := ps.subscriptions[conn]
+	subscriber, exists := ps.connectionToSubscriber[conn]
 
 	if !exists {
 		// create a subscriber struct since this is a new connection
@@ -60,36 +63,27 @@ func (ps *PubSub) Subscribe(conn net.Conn, channel string) error {
 			messages: make(chan Message, 100),
 			done: make(chan struct{}),
 		}
+
+		// store in direct lookup map
+		ps.connectionToSubscriber[conn] = subscriber
 		
 		// initialize channel set for this connection
 		ps.subscriptions[conn] = make(map[string]bool)
 
 		// start goroutine that sends messages to this subscriber
 		go subscriber.sendMessages()
+
+		slog.Debug("Created new subscriber",
+			"remote_addr", conn.RemoteAddr(),
+		)
 	} else {
-		// connection already subscribed to other channels. check if they're subscribed to this channel
-		if channelSet[channel] {
-			return nil
-		}
-
-		// find existing subscriber struct
-		for existingChannel := range channelSet {
-			if subs, ok := ps.subscribers[existingChannel]; ok {
-				if sub, ok := subs[conn]; ok {
-					subscriber = sub
-					break
-				}
-			}
-		}
-
-		// if no subscriber, create new one
-		if subscriber == nil {
-			subscriber = &Subscriber{
-				conn: conn,
-				messages: make(chan Message, 100),
-				done: make(chan struct{}),
-			}
-			go subscriber.sendMessages()
+		// already subscribed to other channels. check if already subscribed to this channel
+		if ps.subscriptions[conn][channel] {
+			slog.Debug("Already subscribed to channel",
+				"channel", channel,
+				"remote_addr", conn.RemoteAddr(),
+			)
+			return nil // Already subscribed, nothing to do
 		}
 	}
 
@@ -102,6 +96,12 @@ func (ps *PubSub) Subscribe(conn net.Conn, channel string) error {
 	}
 	ps.subscribers[channel][conn] = subscriber
 
+	slog.Debug("Subscribed to channel",
+		"channel", channel,
+		"total_channels", len(ps.subscriptions[conn]),
+		"remote_addr", conn.RemoteAddr(),
+	)
+
 	return nil
 }
 
@@ -112,6 +112,7 @@ func (s *Subscriber) sendMessages() {
 		case msg, ok := <-s.messages:
 			if !ok {
 				// channel closed, subscriber has been removed
+				slog.Debug("Message channel closed, exiting sendMessages goroutine")
 				return
 			}
 
@@ -122,11 +123,15 @@ func (s *Subscriber) sendMessages() {
 			_, err := s.conn.Write([]byte(encoded))
 			if err != nil {
 				// write failed, connection is dead
+				slog.Debug("Failed to write message, connection appears dead",
+					"error", err,
+				)
 				return
 			}
 		
 		case <-s.done:
 			// signal to stop this goroutine
+			slog.Debug("Received done signal, exiting sendMessages goroutine")
 			return
 		}
 	}
@@ -162,6 +167,7 @@ func (ps *PubSub) Publish(channel string, message string) int {
 			slog.Warn("Subscriber buffer full, dropping message",
 				"channel", channel,
 				"remote_addr", subscriber.conn.RemoteAddr(),
+				"buffer_size", cap(subscriber.messages),
 			)
 		}
 	}
@@ -210,6 +216,12 @@ func (ps *PubSub) Unsubscribe(conn net.Conn, channel string) error {
 		ps.cleanupConnection(conn)
 	}
 
+	slog.Debug("Unsubscribed from channel",
+		"channel", channel,
+		"remaining_channels", len(channelSet),
+		"remote_addr", conn.RemoteAddr(),
+	)
+
 	return nil
 }
 
@@ -218,9 +230,23 @@ func (ps *PubSub) RemoveConnection (conn net.Conn) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
+	// get subscriber reference before removing from channels
+	subscriber, exists := ps.connectionToSubscriber[conn]
+	if !exists {
+		// Connection was never subscribed, nothing to clean up
+		slog.Debug("RemoveConnection called on non-subscribed connection",
+			"remote_addr", conn.RemoteAddr(),
+		)
+		return
+	}
+
 	// find al channels this connection is subscribed to
 	channelSet, exists := ps.subscriptions[conn]
 	if !exists {
+		slog.Warn("Inconsistent state: subscriber exists but no subscriptions",
+			"remote_addr", conn.RemoteAddr(),
+		)
+		delete(ps.connectionToSubscriber, conn)
 		return
 	}
 
@@ -237,8 +263,15 @@ func (ps *PubSub) RemoveConnection (conn net.Conn) {
 		}
 	}
 
-	// clean up connection's subscriber struct
-	ps.cleanupConnection(conn)
+	// cleanup subscriber
+	close(subscriber.messages)
+
+	// signal done channel
+	close(subscriber.done)
+
+	// remove tracking maps
+	delete(ps.subscriptions, conn)
+	delete(ps.connectionToSubscriber, conn)
 
 	slog.Debug("Removed connection from all pub/sub channels",
 		"remote_addr", conn.RemoteAddr(),
@@ -248,20 +281,26 @@ func (ps *PubSub) RemoveConnection (conn net.Conn) {
 
 // removes a connection's Subscriber struct and stops its goroutine
 func (ps *PubSub) cleanupConnection(conn net.Conn) {
-	delete(ps.subscriptions, conn)
-
-	// find subscriber 
-	for _, subscribers := range ps.subscribers {
-		if subscriber, ok := subscribers[conn]; ok {
-			// close message channel
-			close(subscriber.messages)
-
-			// signal done channel for shutdown
-			close(subscriber.done)
-
-			break
-		}
+	subscriber, exists := ps.connectionToSubscriber[conn]
+	if !exists {
+		// already cleaned up or never existed
+		slog.Debug("cleanupConnection: subscriber not found",
+			"remote_addr", conn.RemoteAddr(),
+		)
+		return
 	}
+
+	// close channels to stop the sendMessages goroutine
+	close(subscriber.messages)
+	close(subscriber.done)
+
+	// remove from tracking maps
+	delete(ps.subscriptions, conn)
+	delete(ps.connectionToSubscriber, conn)
+
+	slog.Debug("Cleaned up connection",
+		"remote_addr", conn.RemoteAddr(),
+	)
 }
 
 // returns number of subscribers for a given channel
