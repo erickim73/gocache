@@ -397,6 +397,9 @@ func handleExec(conn net.Conn, state *ConnectionState, cache *cache.Cache, aof *
 	slog.Debug("Executing transaction",
 		"command_count", len(state.commandQueue),
 	)
+	
+	cache.Lock()
+	defer cache.Unlock()
 
 	// execute each queued command and collect results
 	for i, cmdSlice := range state.commandQueue {
@@ -427,6 +430,81 @@ func handleExec(conn net.Conn, state *ConnectionState, cache *cache.Cache, aof *
 			"command", command,
 			"response_preview", response[:min(len(response), 50)],
 		)
+	}
+
+	// for persistence and replication
+	for _, cmdSlice := range state.commandQueue {
+		command := cmdSlice[0].(string)
+
+		switch command {
+		case "SET":
+			// extract key, value, and handle ttl
+			key := cmdSlice[1].(string)
+			value := cmdSlice[2].(string)
+			
+			ttl := time.Duration(0)
+			ttlSeconds := int64(0)
+			
+			if len(cmdSlice) == 4 {
+				// Parse TTL from the command
+				ttlStr := cmdSlice[3].(string)
+				ttlSec, err := strconv.Atoi(ttlStr)
+				if err == nil {
+					ttl = time.Duration(ttlSec) * time.Second
+					ttlSeconds = int64(ttlSec)
+				}
+			}
+
+			// replicate to followers
+			if leader != nil {
+				err := leader.Replicate(replication.OpSet, key, value, ttlSeconds)
+				if err != nil {
+					slog.Error("Replication failed in transaction",
+						"operation", "SET",
+						"key", key,
+						"error", err,
+					)
+				}
+			}
+
+			// write to aof
+			ttlSecondsStr := strconv.FormatInt(ttlSeconds, 10)
+			aofCommand := protocol.EncodeArray([]interface{}{"SET", key, value, ttlSecondsStr})
+			err := aof.Append(aofCommand)
+			if err != nil {
+				slog.Error("AOF write failed in transaction",
+					"operation", "SET",
+					"key", key,
+					"error", err,
+				)
+			}
+		case "DEL":
+			// extract key
+			key := cmdSlice[1].(string)
+			
+			// replicate to followers
+			if leader != nil {
+				err := leader.Replicate(replication.OpDelete, key, "", 0)
+				if err != nil {
+					slog.Error("Replication failed in transaction",
+						"operation", "DEL",
+						"key", key,
+						"error", err,
+					)
+				}
+			}
+			
+			// write to aof
+			aofCommand := protocol.EncodeArray([]interface{}{"DEL", key})
+			err := aof.Append(aofCommand)
+			if err != nil {
+				slog.Error("AOF write failed in transaction",
+					"operation", "DEL",
+					"key", key,
+					"error", err,
+				)
+			}
+		}
 	}
 
 	// build resp array response containing all command results
@@ -487,35 +565,9 @@ func executeSetCommand(resultSlice []interface{}, cache *cache.Cache, aof *persi
 		ttl = time.Duration(ttlSec) * time.Second
 	}
 
-	// perform set operation
-	cache.Set(key, value, ttl)
+	// assume lock is already held by caller
+	cache.SetInternal(key, value, ttl)
 	
-	ttlSeconds := int64(ttl.Seconds())
-
-	// replicate to followers
-	if leader != nil {
-		err := leader.Replicate(replication.OpSet, key, value, ttlSeconds)
-		if err != nil {
-			slog.Error("Replication failed",
-				"operation", "SET",
-				"key", key,
-				"error", err,
-			)
-		}
-	}
-
-	// write to aof for persistence
-	ttlSecondsStr := strconv.FormatInt(ttlSeconds, 10)
-	aofCommand := protocol.EncodeArray([]interface{}{"SET", key, value, ttlSecondsStr})
-	err := aof.Append(aofCommand)
-	if err != nil {
-		slog.Error("AOF write failed", 
-			"operation", "SET",
-			"key", key,
-			"error", err,
-		)
-	}
-
 	return protocol.EncodeSimpleString("OK")
 }
 
@@ -527,7 +579,7 @@ func executeGetCommand(resultSlice []interface{}, cache *cache.Cache) string {
 
 	key := resultSlice[1].(string)
 
-	result, exists := cache.Get(key)
+	result, exists := cache.GetInternal(key)
 
 	if !exists {
 		// return null bulk string for missing keys
@@ -546,29 +598,7 @@ func executeDeleteCommand(resultSlice []interface{}, cache *cache.Cache, aof *pe
 	key := resultSlice[1].(string)
 
 	// delete from cache
-	cache.Delete(key)
-
-	// replicate to followers
-	if leader != nil {
-		err := leader.Replicate(replication.OpDelete, key, "", 0)
-		if err != nil {
-			slog.Error("Error replicating DEL command from leader to follower",
-				"error", err,
-				"key", key,
-			)
-		}
-	}
-
-	// write to AOF
-	aofCommand := protocol.EncodeArray([]interface{}{"DEL", key})
-	err := aof.Append(aofCommand)
-	if err != nil {
-		slog.Error("Failed to write to AOF",
-			"error", err,
-			"command", "DEL",
-			"key", key,
-		)
-	}
+	cache.DeleteInternal(key)
 
 	return protocol.EncodeSimpleString("OK")
 }
@@ -858,4 +888,12 @@ func handleDBSize(conn net.Conn, cache *cache.Cache) {
 // responds to PING with PONG
 func handlePing(conn net.Conn) {
 	conn.Write([]byte(protocol.EncodeSimpleString("PONG")))
+}
+
+// helper function for min
+func min(a, b int) int {
+    if a < b {
+        return a
+    }
+    return b
 }
