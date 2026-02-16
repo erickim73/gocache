@@ -4,16 +4,16 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"strconv"
 	"time"
-	"log/slog"
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/persistence"
+	"github.com/erickim73/gocache/internal/pubsub"
 	"github.com/erickim73/gocache/internal/replication"
 	"github.com/erickim73/gocache/internal/server"
-	"github.com/erickim73/gocache/internal/pubsub"
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
@@ -78,24 +78,25 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 		// check if connection in subscriber mode
 		if state.subscriberMode {
 			allowedCommands := map[string]bool{
-				"SUBSCRIBE":   true,
-				"UNSUBSCRIBE": true,
-				"PSUBSCRIBE":  true,  // pattern subscribe 
-				"PUNSUBSCRIBE": true, // pattern unsubscribe 
-				"PING":        true,  // health check always allowed
-				"QUIT":        true,  // graceful disconnect always allowed
+				"SUBSCRIBE":    true,
+				"UNSUBSCRIBE":  true,
+				"PSUBSCRIBE":   true, // pattern subscribe
+				"PUNSUBSCRIBE": true, // pattern unsubscribe
+				"PING":         true, // health check always allowed
+				"QUIT":         true, // graceful disconnect always allowed
 			}
 
 			cmdStr, ok := command.(string)
 			if !ok || !allowedCommands[cmdStr] {
 				// reject non-pub/sub commands in subscriber mode
 				conn.Write([]byte(protocol.EncodeError("ERR only (P)SUBSCRIBE / (P)UNSUBSCRIBE / PING / QUIT allowed in this context")))
+
+				// record latency for rejected command
+				duration := time.Since(startTime)
+				cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+				continue
 			}
 
-			// record latency for rejected command
-			duration := time.Since(startTime)
-			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
-			continue
 		}
 
 		// handle pub/sub commands
@@ -379,7 +380,6 @@ func handlePublish(conn net.Conn, resultSlice []interface{}, ps *pubsub.PubSub) 
 	)
 }
 
-
 // process set commands
 func handleSet(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader) {
 	if len(resultSlice) < 3 || len(resultSlice) > 4 {
@@ -418,9 +418,9 @@ func handleSet(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, aof
 			)
 		}
 	}
-	
+
 	// write to aof
-	ttlSecondsStr := strconv.FormatInt(ttlSeconds, 10) 
+	ttlSecondsStr := strconv.FormatInt(ttlSeconds, 10)
 	aofCommand := protocol.EncodeArray([]interface{}{"SET", key, value, ttlSecondsStr})
 	err := aof.Append(aofCommand)
 	if err != nil {
