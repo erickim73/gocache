@@ -276,6 +276,157 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 	}
 }
 
+// queue a command for later execution during EXEC
+func queueCommandForTransaction(conn net.Conn, state *ConnectionState, resultSlice []interface{}) {
+	// it transaction already has an error, don't queue more commands. just return QUEUED to match redis behavior
+	if state.transactionError != nil {
+		conn.Write([]byte(protocol.EncodeSimpleString("QUEUED")))
+		return
+	}
+
+	// validate command syntax before queueing
+	command := resultSlice[0].(string)
+
+	// validate based on command type
+	var validationErr error
+	switch command {
+	case "SET":
+		if len(resultSlice) < 3 || len(resultSlice) > 4 {
+			validationErr = fmt.Errorf("wrong number of arguments for 'set' command")
+		}
+		case "GET":
+		if len(resultSlice) != 2 {
+			validationErr = fmt.Errorf("wrong number of arguments for 'get' command")
+		}
+	case "DEL":
+		if len(resultSlice) != 2 {
+			validationErr = fmt.Errorf("wrong number of arguments for 'del' command")
+		}
+	case "DBSIZE":
+		if len(resultSlice) != 1 {
+			validationErr = fmt.Errorf("wrong number of arguments for 'dbsize' command")
+		}
+	case "PING":
+		// PING can have 0 or 1 arguments
+		if len(resultSlice) > 2 {
+			validationErr = fmt.Errorf("wrong number of arguments for 'ping' command")
+		}
+	}
+
+	// if validation failed, mark transaction as failed
+	if validationErr != nil {
+		state.transactionError = validationErr
+		conn.Write([]byte(protocol.EncodeError(validationErr.Error())))
+		return
+	}
+
+	// validation passed. add command to queue
+	state.commandQueue = append(state.commandQueue, resultSlice)
+	
+	// send queued response to client
+	conn.Write([]byte(protocol.EncodeSimpleString("QUEUED")))
+
+	slog.Debug("Command queued for transaction",
+		"command", command,
+		"queue_length", len(state.commandQueue),
+	)
+}
+
+// start a transaction with MULTI command
+func handleMulti(conn net.Conn, state *ConnectionState) {
+	// check if already in a transaction
+	if state.inTransaction {
+		conn.Write([]byte(protocol.EncodeError("ERR MULTI calls can not be nested")))
+		slog.Debug("Rejected nested MULTI call")
+		return
+	}
+
+	// initialize transaction state
+	state.inTransaction = true
+	state.commandQueue = make([][]interface{}, 0) // empty queue for new transaction
+	state.transactionError = nil // no errors yet
+
+	// send ok response
+	conn.Write([]byte(protocol.EncodeSimpleString("OK")))
+
+	slog.Debug("Transaction started (MULTI called)")
+}
+
+// execute all queued commands atomically with EXEC
+func handleExec(conn net.Conn, state *ConnectionState, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader) {
+	// check if we're actually in a transaction
+	if !state.inTransaction {
+		conn.Write([]byte(protocol.EncodeError("ERR EXEC without MULTI")))
+		slog.Debug("EXEC called without MULTI")
+		return
+	}
+
+	// always reset transaction state when done
+	defer func() {
+		state.inTransaction = false
+		state.commandQueue = nil
+		state.transactionError = nil
+	}()
+
+	// if any command has validation error during queueing, abort transaction
+	if state.transactionError != nil {
+		conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("EXECABORT Transaction discarded because of previous errors."))))
+		slog.Debug("Transaction aborted due to validation error", 
+			"error", state.transactionError,
+		)
+		return
+	}
+
+	results := make([]interface{}, len(state.commandQueue))
+	
+	slog.Debug("Executing transaction",
+		"command_count", len(state.commandQueue),
+	)
+
+	// execute each queued command and collect results
+	for i, cmdSlice := range state.commandQueue {
+		command := cmdSlice[0].(string)
+
+		// execute command and capture the response string
+		var response string
+		switch command {
+		case "SET":
+			response = executeSetCommand(cmdSlice, cache, aof, leader)
+		case "GET":
+			response = executeGetCommand(cmdSlice, cache)
+		case "DEL":
+			response = executeDeleteCommand(cmdSlice, cache, aof, leader)
+		case "DBSIZE":
+			response = executeDBSizeCommand(cache)
+		case "PING":
+			response = executePingCommand()
+		default:
+			response = protocol.EncodeError(fmt.Sprintf("ERR unknown command '%s'", command))
+		}
+
+		// store raw resp response
+		results[i] = response
+
+		slog.Debug("Transaction command executed",
+			"index", i,
+			"command", command,
+			"response_preview", response[:min(len(response), 50)],
+		)
+	}
+
+	// build resp array response containing all command results
+	arrayResponse := fmt.Sprintf("*%d\r\n", len(results))
+	for _, result := range results {
+		arrayResponse += result.(string)
+	}
+
+	conn.Write([]byte(arrayResponse))
+	
+	slog.Debug("Transaction completed successfully",
+		"commands_executed", len(results),
+	)
+}
+
 // process subscribe commands
 func handleSubscribe(conn net.Conn, resultSlice []interface{}, ps *pubsub.PubSub, state *ConnectionState) {
 	// validate command format
