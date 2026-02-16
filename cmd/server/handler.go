@@ -427,6 +427,126 @@ func handleExec(conn net.Conn, state *ConnectionState, cache *cache.Cache, aof *
 	)
 }
 
+// execute set command and return RESP formatted response
+func executeSetCommand(resultSlice []interface{}, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader) string {
+	// validate arguments
+	if len(resultSlice) < 3 || len(resultSlice) > 4 {
+		return protocol.EncodeError("ERR wrong number of arguments for 'set' command")
+	}
+
+	key := resultSlice[1].(string)
+	value := resultSlice[2].(string)
+
+	ttl := time.Duration(0)
+
+	// parse ttl if found
+	if len(resultSlice) == 4 {
+		seconds := resultSlice[3].(string)
+		ttlSec, err := strconv.Atoi(seconds)
+		if err != nil {
+			return protocol.EncodeError("ERR value is not an integer or out of range")
+		}
+		ttl = time.Duration(ttlSec) * time.Second
+	}
+
+	// perform set operation
+	cache.Set(key, value, ttl)
+	
+	ttlSeconds := int64(ttl.Seconds())
+
+	// replicate to followers
+	if leader != nil {
+		err := leader.Replicate(replication.OpSet, key, value, ttlSeconds)
+		if err != nil {
+			slog.Error("Replication failed",
+				"operation", "SET",
+				"key", key,
+				"error", err,
+			)
+		}
+	}
+
+	// write to aof for persistence
+	ttlSecondsStr := strconv.FormatInt(ttlSeconds, 10)
+	aofCommand := protocol.EncodeArray([]interface{}{"SET", key, value, ttlSecondsStr})
+	err := aof.Append(aofCommand)
+	if err != nil {
+		slog.Error("AOF write failed", 
+			"operation", "SET",
+			"key", key,
+			"error", err,
+		)
+	}
+
+	return protocol.EncodeSimpleString("OK")
+}
+
+// execute GET command return RESP formatted response
+func executeGetCommand(resultSlice []interface{}, cache *cache.Cache) string {
+	if len(resultSlice) != 2 {
+		return protocol.EncodeError("ERR wrong number of arguments for 'get' command")
+	}
+
+	key := resultSlice[1].(string)
+
+	result, exists := cache.Get(key)
+
+	if !exists {
+		// return null bulk string for missing keys
+		return protocol.EncodeBulkString("", true)
+	}
+	
+	return protocol.EncodeBulkString(result, false)
+}
+
+// execute DEL command return resp formatted response
+func executeDeleteCommand(resultSlice []interface{}, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader) string {
+	if len(resultSlice) != 2 {
+		return protocol.EncodeError("ERR wrong number of arguments for 'del' command")
+	}
+
+	key := resultSlice[1].(string)
+
+	// delete from cache
+	cache.Delete(key)
+
+	// replicate to followers
+	if leader != nil {
+		err := leader.Replicate(replication.OpDelete, key, "", 0)
+		if err != nil {
+			slog.Error("Error replicating DEL command from leader to follower",
+				"error", err,
+				"key", key,
+			)
+		}
+	}
+
+	// write to AOF
+	aofCommand := protocol.EncodeArray([]interface{}{"DEL", key})
+	err := aof.Append(aofCommand)
+	if err != nil {
+		slog.Error("Failed to write to AOF",
+			"error", err,
+			"command", "DEL",
+			"key", key,
+		)
+	}
+
+	return protocol.EncodeSimpleString("OK")
+}
+
+// execute DBSIZE command and return RESP formatted response
+func executeDBSizeCommand(cache *cache.Cache) string {
+	keys := cache.GetAllKeys()
+	count := len(keys)
+	return fmt.Sprintf(":%d\r\n", count)
+}
+
+// execute PING command and return RESP formmated response
+func executePingCommand() string {
+	return protocol.EncodeSimpleString("PONG")
+}
+
 // process subscribe commands
 func handleSubscribe(conn net.Conn, resultSlice []interface{}, ps *pubsub.PubSub, state *ConnectionState) {
 	// validate command format
