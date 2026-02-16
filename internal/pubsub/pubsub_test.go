@@ -1,11 +1,25 @@
 package pubsub
 
 import (
+	"fmt"
 	"net"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
 )
+
+type mockAddr struct {
+	address string
+}
+
+func (m *mockAddr) Network() string {
+	return "tcp"
+}
+
+func (m *mockAddr) String() string {
+	return m.address
+}
 
 // mock network connection for testing
 type mockConn struct {
@@ -14,6 +28,36 @@ type mockConn struct {
 	closed bool
 	written []byte // track what was written to this connection
 	mu sync.Mutex
+}
+
+// returns the remote network address
+func (m *mockConn) RemoteAddr() net.Addr {
+	return &mockAddr{address: "mock-" + m.id}
+}
+
+// returns the local network address
+func (m *mockConn) LocalAddr() net.Addr {
+	return &mockAddr{address: "local-" + m.id}
+}
+
+// ADDED: SetDeadline implements net.Conn (not used in tests but required for interface)
+func (m *mockConn) SetDeadline(t time.Time) error {
+	return nil
+}
+
+// ADDED: SetReadDeadline implements net.Conn (not used in tests but required for interface)
+func (m *mockConn) SetReadDeadline(t time.Time) error {
+	return nil
+}
+
+// ADDED: SetWriteDeadline implements net.Conn (not used in tests but required for interface)
+func (m *mockConn) SetWriteDeadline(t time.Time) error {
+	return nil
+}
+
+// ADDED: Read implements net.Conn.Read (not used in our tests but required for interface)
+func (m *mockConn) Read(b []byte) (n int, err error) {
+	return 0, nil
 }
 
 // write implements net.Conn.Write for our mock
@@ -511,4 +555,109 @@ func TestSlowSubscriber(t *testing.T) {
 	// The publish should not block
 	// Some messages will be dropped due to full buffer
 	// This test mainly verifies no deadlock occurs
+}
+
+
+func TestNoGoroutineLeak(t *testing.T) {
+    ps := NewPubSub()
+    
+    // record starting goroutine count
+    before := runtime.NumGoroutine()
+    
+    // create and remove 10 connections
+    for i := 0; i < 10; i++ {
+        conn := newMockConn(fmt.Sprintf("conn%d", i))
+        ps.Subscribe(conn, "test")
+        time.Sleep(10 * time.Millisecond) // let goroutine start
+        ps.RemoveConnection(conn)
+    }
+    
+    // give goroutines time to exit
+    time.Sleep(100 * time.Millisecond)
+    
+    // check goroutine count
+    after := runtime.NumGoroutine()
+    leaked := after - before
+    
+    if leaked > 0 {
+        t.Errorf("Goroutine leak detected: %d goroutines leaked", leaked)
+    }
+}
+
+func TestRemoveConnectionClosesChannels(t *testing.T) {
+    ps := NewPubSub()
+    conn := newMockConn("conn1")
+    
+    ps.Subscribe(conn, "news")
+    time.Sleep(10 * time.Millisecond)
+    
+    // get reference to subscriber before removal
+    subscribers := ps.subscribers["news"]
+    subscriber := subscribers[conn]
+    
+    // remove connection
+    ps.RemoveConnection(conn)
+    
+    // try to send on channels - should panic if not closed
+    defer func() {
+        if r := recover(); r == nil {
+            t.Error("Expected panic from sending on closed channel")
+        }
+    }()
+    
+    subscriber.messages <- Message{Channel: "test", Content: "test"}
+}
+
+func TestNoGoroutineLeakAfterRemove(t *testing.T) {
+	ps := NewPubSub()
+
+	// Create subscriber
+	conn := newMockConn("conn1")
+	ps.Subscribe(conn, "news")
+	ps.Subscribe(conn, "sports")
+
+	time.Sleep(10 * time.Millisecond) // Let goroutines start
+
+	// Get subscriber reference before removal
+	ps.mu.RLock()
+	subscriber := ps.connectionToSubscriber[conn]
+	ps.mu.RUnlock()
+
+	if subscriber == nil {
+		t.Fatal("Subscriber should exist")
+	}
+
+	// Remove connection
+	ps.RemoveConnection(conn)
+
+	// Verify channels are closed by trying to send (should not block)
+	done := make(chan bool, 1)
+	go func() {
+		// Try to send on message channel - should not block if closed
+		defer func() {
+			if r := recover(); r != nil {
+				// Expected: panic from sending on closed channel
+				done <- true
+			}
+		}()
+		subscriber.messages <- Message{Channel: "test", Content: "test"}
+		done <- false
+	}()
+
+	select {
+	case success := <-done:
+		if !success {
+			t.Error("Message channel was not closed - potential goroutine leak")
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Timeout waiting for channel operation - goroutine may be leaked")
+	}
+
+	// Verify cleanup
+	if _, exists := ps.connectionToSubscriber[conn]; exists {
+		t.Error("Connection should be removed from connectionToSubscriber map")
+	}
+	if _, exists := ps.subscriptions[conn]; exists {
+		t.Error("Connection should be removed from subscriptions map")
+	}
 }
