@@ -226,3 +226,110 @@ func (c *Cache) GetAllKeys() []string {
 	}
 	return keys
 }
+
+// sets a value without acquiring the lock. use when the lock is already held
+func (c *Cache) SetInternal(key, value string, ttl time.Duration) error {
+	// check if key exists
+	existingItem, exists := c.data[key]
+
+	// if updating existing key, subtract old memory first
+	if exists {
+		oldSize := c.calculateItemSize(key, existingItem.value)
+		c.currentMemoryBytes -= oldSize
+	}
+
+	// if cache is full and key doesn't exist
+	if !exists && len(c.data) >= c.maxSize {
+		evictedKey := c.lru.RemoveLRU()
+		evictedItem, found := c.data[evictedKey]
+		if found {
+			evictedSize := c.calculateItemSize(evictedKey, evictedItem.value)
+			c.currentMemoryBytes -= evictedSize
+			c.metrics.RecordEviction()
+		}
+		delete(c.data, evictedKey)
+	}
+
+	// calculate expiration
+	var expiresAt time.Time
+	if ttl > 0 {
+		expiresAt = time.Now().Add(ttl)
+	}
+
+	if exists {
+		c.data[key].value = value
+		c.data[key].expiresAt = expiresAt
+		c.lru.MoveToFront(c.data[key].node)
+	} else {
+		node := c.lru.Add(key)
+		c.data[key] = &CacheItem{
+			value:     value,
+			expiresAt: expiresAt,
+			node:      node,
+		}
+	}
+
+	// calculate and add new memory
+	newSize := c.calculateItemSize(key, value)
+	c.currentMemoryBytes += newSize
+
+	// record metrics
+	c.metrics.RecordOperation("set")
+	c.metrics.UpdateItemsCount(len(c.data))
+	c.metrics.UpdateMemoryUsage(c.currentMemoryBytes)
+
+	return nil
+}
+
+// gets a value without acquiring the lock. use when the lock is already held
+func (c *Cache) GetInternal(key string) (string, bool) {
+	c.metrics.RecordOperation("get")
+	
+	node, exists := c.data[key]
+	
+	if !exists {
+		c.metrics.RecordCacheMiss()
+		return "", false
+	}
+
+	if !node.expiresAt.IsZero() && time.Now().After(node.expiresAt) {
+		c.metrics.RecordCacheMiss()
+		c.metrics.RecordExpiration()
+		return "", false
+	}
+	
+	c.metrics.RecordCacheHit()
+	c.lru.MoveToFront(node.node)
+	return node.value, true
+}
+
+// deletes a value without acquiring the lock. use when the lock is already held
+func (c *Cache) DeleteInternal(key string) error {
+	item, exists := c.data[key]
+
+	if !exists {
+		c.metrics.RecordOperation("delete")
+		return nil
+	}
+
+	itemSize := c.calculateItemSize(key, item.value)
+	c.currentMemoryBytes -= itemSize
+
+	c.lru.RemoveNode(item.node)
+	delete(c.data, key)
+
+	c.metrics.RecordOperation("delete")
+	c.metrics.UpdateItemsCount(len(c.data))
+	c.metrics.UpdateMemoryUsage(c.currentMemoryBytes)
+
+	return nil
+}
+
+func (c *Cache) Lock() {
+	c.mu.Lock()
+}
+
+func (c *Cache) Unlock() {
+	c.mu.Unlock()
+}
+
