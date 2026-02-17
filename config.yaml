@@ -1,0 +1,12 @@
+# simple mode configuration for testing
+port: 7000
+metrics_port: 9090
+max_cache_size: 1000
+role: leader
+leader_addr: "localhost:7001"
+aof_file: "cmd/data/cache.aof"
+snapshot_file: "cmd/data/cache.rdb"
+sync_policy: "everysecond"
+snapshot_interval_seconds: 300
+growth_factor: 2
+log_level: "info"
