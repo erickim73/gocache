@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"bufio"
@@ -13,7 +13,6 @@ import (
 	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/internal/pubsub"
 	"github.com/erickim73/gocache/internal/replication"
-	"github.com/erickim73/gocache/internal/server"
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
@@ -60,7 +59,7 @@ func canQueueCommand(command string) bool {
 }
 
 // handle client commands and write to aof
-func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, nodeState *server.NodeState, ps *pubsub.PubSub) {
+func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, nodeState *NodeState, ps *pubsub.PubSub) {
 	defer conn.Close()
 
 	// when connection closes, remove from all pub/sub channels
