@@ -162,45 +162,6 @@ func (h *TestHarness) startNode(cfg NodeConfig) *NodeHandle {
 	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Port)
 	h.t.Logf("[harness] starting %s node on %s", cfg.Role, addr)
 
-	// =========================================================================
-	// REPLACE THIS BLOCK with your real server initialization.
-	//
-	// Steps:
-	//   1. Add imports for your server and config packages at the top of this file.
-	//   2. Convert NodeConfig fields to your config.Config fields.
-	//   3. Create your server with server.New(cfg).
-	//   4. Launch it in a goroutine (Start() should block until Stop() is called).
-	//   5. Return a stopFn closure that calls server.Stop().
-	//
-	// Concrete example — adjust package names and field names to match yours:
-	//
-	//   import (
-	//       "gocache/cmd/server"
-	//       "gocache/internal/config"
-	//   )
-	//
-	//   serverCfg := &config.Config{
-	//       Port:       cfg.Port,
-	//       Role:       cfg.Role,
-	//       LeaderAddr: cfg.LeaderAddr,
-	//       MaxMemory:  cfg.MaxMemoryMB * 1024 * 1024,
-	//   }
-	//   srv, err := server.New(serverCfg)
-	//   if err != nil {
-	//       h.t.Fatalf("startNode: create server: %v", err)
-	//   }
-	//   errCh := make(chan error, 1)
-	//   go func() { errCh <- srv.Start() }()
-	//   stopFn := func() {
-	//       srv.Stop()
-	//       // Drain the error channel so the goroutine can exit.
-	//       <-errCh
-	//   }
-	//
-	// Until you do this, the stub server below is used so all the harness
-	// logic and test structure can be exercised independently.
-	// =========================================================================
-
 	serverCfg := config.DefaultConfig()
 	serverCfg.Port = cfg.Port
 	serverCfg.Role = cfg.Role
@@ -218,7 +179,6 @@ func (h *TestHarness) startNode(cfg NodeConfig) *NodeHandle {
 		errCh <- struct{}{} // signal that Start() has returned
 	}()
 
-	// CHANGED: stopFn calls the real Stop() and then waits for the goroutine
 	// above to exit, giving deferred closes (AOF, listener) time to finish.
 	stopFn := func() {
 		srv.Stop()
