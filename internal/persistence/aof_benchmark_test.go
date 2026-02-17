@@ -3,6 +3,7 @@ package persistence
 import (
 	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,9 +11,22 @@ import (
 	"github.com/erickim73/gocache/internal/metrics"
 )
 
+var (
+	packageMetricsCollector *metrics.Collector
+	packageMetricsOnce      sync.Once
+)
+
+// get or create shared collector
+func getMetricsCollector() *metrics.Collector {
+	packageMetricsOnce.Do(func() {
+		packageMetricsCollector = metrics.NewCollector()
+	})
+	return packageMetricsCollector
+}
+
 func setupBenchmark(b *testing.B, policy SyncPolicy) (*cache.Cache, *AOF) {
 	// create cache
-	metricsCollector := metrics.NewCollector()
+	metricsCollector := getMetricsCollector()
 	c, _ := cache.NewCache(100000, metricsCollector)
 
 	// use unique filename for each test
@@ -36,7 +50,7 @@ func cleanupBenchmark(aof *AOF) {
 }
 
 func BenchmarkSetNoPersistence(b *testing.B) {
-	metricsCollector := metrics.NewCollector()
+	metricsCollector := getMetricsCollector()
 	c, _ := cache.NewCache(100000, metricsCollector)
 
 	b.ResetTimer()

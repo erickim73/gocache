@@ -7,17 +7,31 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/erickim73/gocache/internal/cache"
+	"github.com/erickim73/gocache/internal/metrics"
 	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/internal/replication"
 	"github.com/erickim73/gocache/internal/server"
 	"github.com/erickim73/gocache/pkg/client"
 	"github.com/erickim73/gocache/pkg/protocol"
-	"github.com/erickim73/gocache/internal/metrics"
 )
+
+var (
+	packageMetricsCollector *metrics.Collector
+	packageMetricsOnce      sync.Once
+)
+
+// get or create shared collector
+func getMetricsCollector() *metrics.Collector {
+	packageMetricsOnce.Do(func() {
+		packageMetricsCollector = metrics.NewCollector()
+	})
+	return packageMetricsCollector
+}
 
 // TestRedirect verifies that clients automatically follow redirects from follower to leader
 func TestRedirect(t *testing.T) {
@@ -368,7 +382,7 @@ type TestServer struct {
 // startTestLeader starts a leader server for testing
 func startTestLeader(t *testing.T, port int) *TestServer {
 	// create cache
-	metricsCollector := metrics.NewCollector()
+	metricsCollector := getMetricsCollector()
 	myCache, err := cache.NewCache(100, metricsCollector)
 	if err != nil {
 		t.Fatalf("Failed to create cache: %v", err)
@@ -425,7 +439,7 @@ func startTestLeader(t *testing.T, port int) *TestServer {
 // startTestFollower starts a follower server for testing
 func startTestFollower(t *testing.T, port int, leaderAddr string) *TestServer {
 	// create cache
-	metricsCollector := metrics.NewCollector()
+	metricsCollector := getMetricsCollector()
 	myCache, err := cache.NewCache(100, metricsCollector)
 	if err != nil {
 		t.Fatalf("Failed to create cache: %v", err)

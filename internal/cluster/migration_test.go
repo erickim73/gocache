@@ -2,11 +2,25 @@ package cluster
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/metrics"
 )
+
+var (
+	packageMetricsCollector *metrics.Collector
+	packageMetricsOnce      sync.Once
+)
+
+// get or create shared collector
+func getMetricsCollector() *metrics.Collector {
+	packageMetricsOnce.Do(func() {
+		packageMetricsCollector = metrics.NewCollector()
+	})
+	return packageMetricsCollector
+}
 
 // tests that we correctly identify which keys to migrate
 func TestMigrationCalculation(t *testing.T) {
@@ -102,7 +116,7 @@ func TestHashRangeDetection(t * testing.T) {
 // tests that cache can enumerate keys in hash ranges
 func TestKeyEnumeration(t *testing.T) {
 	// create cache and hash ring
-	metricsCollector := metrics.NewCollector()
+	metricsCollector := getMetricsCollector()
 	c, err := cache.NewCache(1000, metricsCollector)
 	if err != nil {
 		t.Errorf("Error creating cache: %v\n", err)
@@ -147,7 +161,7 @@ func TestKeyEnumeration(t *testing.T) {
 // tests the complete migration process
 func TestFullMigrationFlow(t *testing.T) {
 	// setup
-	metricsCollector := metrics.NewCollector()
+	metricsCollector := getMetricsCollector()
 	c, err := cache.NewCache(1000, metricsCollector)
 	if err != nil {
 		t.Errorf("Error creating cache: %v\n", err)
@@ -208,7 +222,7 @@ func BenchmarkHashCalculation(b *testing.B) {
 
 // benchmarks finding keys in a range
 func BenchmarkKeyEnumeration(b *testing.B) {
-	metricsCollector := metrics.NewCollector()
+	metricsCollector := getMetricsCollector()
 	c, err := cache.NewCache(10000, metricsCollector)
 	if err != nil {
 		b.Errorf("Error creating cache: %v\n", err)

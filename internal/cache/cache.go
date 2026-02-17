@@ -96,8 +96,8 @@ func (c *Cache) Set(key, value string, ttl time.Duration) error {
 }
 
 func (c *Cache) Get(key string) (string, bool) {
-	c.mu.RLock() 		// multiple readers can enter
-	defer c.mu.RUnlock()
+	c.mu.Lock() 		// multiple readers can enter
+	defer c.mu.Unlock()
 
 	c.metrics.RecordOperation("get")
 	
