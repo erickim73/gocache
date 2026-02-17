@@ -442,7 +442,6 @@ func handleExec(conn net.Conn, state *ConnectionState, cache *cache.Cache, aof *
 			key := cmdSlice[1].(string)
 			value := cmdSlice[2].(string)
 			
-			ttl := time.Duration(0)
 			ttlSeconds := int64(0)
 			
 			if len(cmdSlice) == 4 {
@@ -450,7 +449,6 @@ func handleExec(conn net.Conn, state *ConnectionState, cache *cache.Cache, aof *
 				ttlStr := cmdSlice[3].(string)
 				ttlSec, err := strconv.Atoi(ttlStr)
 				if err == nil {
-					ttl = time.Duration(ttlSec) * time.Second
 					ttlSeconds = int64(ttlSec)
 				}
 			}
@@ -553,20 +551,43 @@ func executeSetCommand(resultSlice []interface{}, cache *cache.Cache, aof *persi
 	key := resultSlice[1].(string)
 	value := resultSlice[2].(string)
 
+	slog.Info("executeSetCommand called",
+        "key", key,
+        "value", value,
+        "arg_count", len(resultSlice),
+    )
+
 	ttl := time.Duration(0)
 
 	// parse ttl if found
 	if len(resultSlice) == 4 {
+		slog.Info("Parsing TTL",
+            "ttl_arg", resultSlice[3],
+            "ttl_type", fmt.Sprintf("%T", resultSlice[3]),
+        )
+
 		seconds := resultSlice[3].(string)
 		ttlSec, err := strconv.Atoi(seconds)
 		if err != nil {
+			slog.Error("Failed to parse TTL",
+                "seconds_str", seconds,
+                "error", err,
+            )
+
 			return protocol.EncodeError("ERR value is not an integer or out of range")
 		}
 		ttl = time.Duration(ttlSec) * time.Second
+
+		slog.Info("TTL parsed successfully",
+            "ttl_seconds", ttlSec,
+            "ttl_duration", ttl,
+        )
 	}
 
 	// assume lock is already held by caller
 	cache.SetInternal(key, value, ttl)
+
+	slog.Info("Set operation completed", "key", key)
 	
 	return protocol.EncodeSimpleString("OK")
 }
