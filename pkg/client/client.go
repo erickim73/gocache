@@ -196,6 +196,194 @@ func (c *Client) Delete(key string) error {
 	return nil
 }
 
+// start a transaction with MULTI command
+func (c *Client) Multi() error {
+	command := []interface{}{"MULTI"}
+	response, err := c.executeCommandWithRedirect(command)
+	if err != nil {
+		return fmt.Errorf("MULTI failed: %v", err)
+	}
+
+	// check for OK response
+	if response != "OK" {
+		return fmt.Errorf("MULTI failed: %s", response)
+	}
+
+	slog.Debug("Transaction started (MULTI)")
+	return nil
+}
+
+// execute all queued commands atomically with EXEC
+func (c *Client) Exec() ([]string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// send EXEC command
+	command := protocol.EncodeArray([]interface{}{"EXEC"})
+
+	_, err := c.writer.WriteString(command)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write EXEC: %v", err)
+	}
+
+	err = c.writer.Flush()
+	if err != nil {
+		return nil, fmt.Errorf("failed to flush EXEC: %v", err)
+	}
+
+	// read response 
+	result, err := protocol.Parse(c.reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read EXEC response: %v", err)
+	}
+
+	// check if it's an error
+	if errStr, ok := result.(error); ok {
+		return nil, fmt.Errorf("EXEC error: %v", errStr)
+	}
+
+	// check if it's a string error
+	if str, ok := result.(string); ok {
+		// simples strings starting with + are ok, errors start with -
+		if len(str) > 0 && str[0] == '-' {
+			return nil, fmt.Errorf("EXEC error: %s", str)
+		}
+	}
+
+	// result should be an array of responses
+	resultArray, ok := result.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("unexpected EXEC response type: %T", result)
+	}
+
+	// convert each result to a string
+	responses := make([]string, len(resultArray))
+	for i, r := range resultArray {
+		// each result is already parsed by protocol.Parse
+		switch v := r.(type) {
+		case string:
+			responses[i] = v
+		case int64:
+			responses[i] = fmt.Sprintf("%d", v)
+		case []byte:
+			responses[i] = string(v)
+		case nil:
+			responses[i] = "(nil)" // null bulk string
+		case error:
+			responses[i] = fmt.Sprintf("ERR: %v", v)
+		default:
+			responses[i] = fmt.Sprintf("%v", v)
+		}
+	}
+
+	slog.Debug("Transaction executed (EXEC)",
+		"commands_executed", len(responses),
+	)
+
+	return responses, nil
+}
+
+// discard all queued commands and exit transaction mode with discard
+func (c *Client) Discard() error {
+	command := []interface{}{"DISCARD"}
+	response, err := c.executeCommandWithRedirect(command)
+	if err != nil {
+		return fmt.Errorf("DISCARD failed: %v", err)
+	}
+
+	// Check for OK response
+	if response != "OK" {
+		return fmt.Errorf("DISCARD failed: %s", response)
+	}
+
+	slog.Debug("Transaction discarded (DISCARD)")
+	return nil
+}
+
+// managing transactions more easily
+type TransactionPipeline struct {
+	client *Client
+	commands [][]interface{}
+	started bool
+}
+
+// create a new transaction pipeline
+func (c *Client) NewTransaction() *TransactionPipeline {
+	return &TransactionPipeline{
+		client: c,
+		commands: make([][]interface{}, 0), 
+		started: false,
+	}
+}
+
+// add set command to transaction pipeline
+func (tp *TransactionPipeline) Set(key, value string) *TransactionPipeline {
+	tp.commands = append(tp.commands, []interface{}{"SET", key, value})
+	return tp
+}
+
+// add set with ttl command to transaction pipeline
+func (tp *TransactionPipeline) SetWithTTL(key, value string, ttl int) *TransactionPipeline {
+	tp.commands = append(tp.commands, []interface{}{"SET", key, value, fmt.Sprintf("%d", ttl)})
+	return tp
+}
+
+// add get command to transaction pipeline
+func (tp *TransactionPipeline) Get(key string) *TransactionPipeline {
+	tp.commands = append(tp.commands, []interface{}{"GET", key})
+	return tp
+}
+
+// add del command to transaction pipeline
+func (tp *TransactionPipeline) Del(key string) *TransactionPipeline {
+	tp.commands = append(tp.commands, []interface{}{"DEL", key})
+	return tp
+}
+
+// execute the transaction pipeline
+func (tp *TransactionPipeline) Execute() ([]string, error) {
+	// start transaction
+	if err := tp.client.Multi(); err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %v", err)
+	}
+	tp.started = true
+
+	// send all queued commands
+	// each command should receive "QUEUED" response
+	for _, cmd := range tp.commands {
+		response, err := tp.client.executeCommandWithRedirect(cmd)
+		if err != nil {
+			// transaction failed, try to discard
+			tp.client.Discard()
+			return nil, fmt.Errorf("command failed during transaction: %v", err)
+		}
+
+		// check that command was queued successfully
+		if response != "QUEUED" {
+			// got an error instead of QUEUED, transaction is poisoned
+			tp.client.Discard()
+			return nil, fmt.Errorf("command rejected during transaction: %s", response)
+		}
+	}
+
+	// execute transaction
+	results, err := tp.client.Exec()
+	if err != nil {
+		return nil, fmt.Errorf("EXEC failed: %v", err)
+	}
+
+	return results, nil
+}
+
+// cancel transaction pipeline
+func (tp *TransactionPipeline) Cancel() error {
+	if !tp.started {
+		return nil // Nothing to cancel
+	}
+
+	return tp.client.Discard()
+}
+
 // sends a generic command to the server and returns the response
 func (c *Client) SendCommand(args ...string) (string, error) {
 	c.mu.Lock()

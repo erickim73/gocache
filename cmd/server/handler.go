@@ -20,6 +20,11 @@ import (
 // tracks whether a connection is in subscriber mode
 type ConnectionState struct {
 	subscriberMode bool // is connection subscribed to any channels
+
+	// transaction state tracking
+	inTransaction bool // true when client has called MULTI but not yet EXEC/DISCARD
+	commandQueue [][]interface{} // queued commands waiting for EXEC (stores raw command slices)
+	transactionError error // set if command validation failed during queueing
 }
 
 // returns true if the operation must be handled by the leader
@@ -32,6 +37,26 @@ func requiresLeader(operation string) bool {
 	default:
 		return true // unknown operations go to leader for safety
 	}
+}
+
+// validate if a command can be queued in a transaction
+func canQueueCommand(command string) bool {
+	// transaction control commands can't be nested
+	if command == "MULTI" || command == "EXEC" || command == "DISCARD" {
+		return false
+	}
+
+	// pub/sub commands can't be used in transactions
+	if command == "SUBSCRIBE" || command == "UNSUBSCRIBE" || command == "PUBLISH" || command == "PSUBSCRIBE" || command == "PUNSUBSCRIBE" {
+		return false
+	}
+
+	// cluster commands shouldn't be in transactions
+	if command == "CLUSTER" {
+		return false
+	}
+
+	return true
 }
 
 // handle client commands and write to aof
@@ -51,6 +76,9 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 	// track connection state
 	state := &ConnectionState{
 		subscriberMode: false,
+		inTransaction: false,
+		commandQueue: nil,
+		transactionError: nil,
 	}
 
 	// read from client
@@ -96,7 +124,29 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 				cache.GetMetrics().RecordOperationDuration(duration.Seconds())
 				continue
 			}
+		}
 
+		// check if we're in transaction mode and should queue this command
+		cmdStr, ok := command.(string)
+		if ok && state.inTransaction {
+			// transaction control commands are handled immediately, not queued
+			if cmdStr == "EXEC" || cmdStr == "DISCARD" {
+				// handled by switch statement
+			} else if canQueueCommand(cmdStr) {
+				// queue command for later execution during EXEC
+				queueCommandForTransaction(conn, state, resultSlice)
+
+				duration := time.Since(startTime)
+				cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+				continue
+			} else {
+				// command can't be queued
+				conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("ERR command '%s cannot be used in a transaction", cmdStr))))
+
+				duration := time.Since(startTime)
+				cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+				continue
+			}
 		}
 
 		// handle pub/sub commands
@@ -217,6 +267,21 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 			duration := time.Since(startTime)
 			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
 
+		case "MULTI":
+			handleMulti(conn, state)
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+
+		case "EXEC":
+			leader := nodeState.GetLeader()
+			handleExec(conn, state, cache, aof, leader)
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
+
+		case "DISCARD":
+			handleDiscard(conn, state)
+			duration := time.Since(startTime)
+			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
 		default:
 			conn.Write([]byte(protocol.EncodeError("Unknown command " + command.(string))))
 			// record latency for unknown commands
@@ -224,6 +289,351 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
 		}
 	}
+}
+
+// queue a command for later execution during EXEC
+func queueCommandForTransaction(conn net.Conn, state *ConnectionState, resultSlice []interface{}) {
+	// it transaction already has an error, don't queue more commands. just return QUEUED to match redis behavior
+	if state.transactionError != nil {
+		conn.Write([]byte(protocol.EncodeSimpleString("QUEUED")))
+		return
+	}
+
+	// validate command syntax before queueing
+	command := resultSlice[0].(string)
+
+	// validate based on command type
+	var validationErr error
+	switch command {
+	case "SET":
+		if len(resultSlice) < 3 || len(resultSlice) > 4 {
+			validationErr = fmt.Errorf("wrong number of arguments for 'set' command")
+		}
+		case "GET":
+		if len(resultSlice) != 2 {
+			validationErr = fmt.Errorf("wrong number of arguments for 'get' command")
+		}
+	case "DEL":
+		if len(resultSlice) != 2 {
+			validationErr = fmt.Errorf("wrong number of arguments for 'del' command")
+		}
+	case "DBSIZE":
+		if len(resultSlice) != 1 {
+			validationErr = fmt.Errorf("wrong number of arguments for 'dbsize' command")
+		}
+	case "PING":
+		// PING can have 0 or 1 arguments
+		if len(resultSlice) > 2 {
+			validationErr = fmt.Errorf("wrong number of arguments for 'ping' command")
+		}
+	}
+
+	// if validation failed, mark transaction as failed
+	if validationErr != nil {
+		state.transactionError = validationErr
+		conn.Write([]byte(protocol.EncodeError(validationErr.Error())))
+		return
+	}
+
+	// validation passed. add command to queue
+	state.commandQueue = append(state.commandQueue, resultSlice)
+	
+	// send queued response to client
+	conn.Write([]byte(protocol.EncodeSimpleString("QUEUED")))
+
+	slog.Debug("Command queued for transaction",
+		"command", command,
+		"queue_length", len(state.commandQueue),
+	)
+}
+
+// start a transaction with MULTI command
+func handleMulti(conn net.Conn, state *ConnectionState) {
+	// check if already in a transaction
+	if state.inTransaction {
+		conn.Write([]byte(protocol.EncodeError("ERR MULTI calls can not be nested")))
+		slog.Debug("Rejected nested MULTI call")
+		return
+	}
+
+	// initialize transaction state
+	state.inTransaction = true
+	state.commandQueue = make([][]interface{}, 0) // empty queue for new transaction
+	state.transactionError = nil // no errors yet
+
+	// send ok response
+	conn.Write([]byte(protocol.EncodeSimpleString("OK")))
+
+	slog.Debug("Transaction started (MULTI called)")
+}
+
+// execute all queued commands atomically with EXEC
+func handleExec(conn net.Conn, state *ConnectionState, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader) {
+	// check if we're actually in a transaction
+	if !state.inTransaction {
+		conn.Write([]byte(protocol.EncodeError("ERR EXEC without MULTI")))
+		slog.Debug("EXEC called without MULTI")
+		return
+	}
+
+	// always reset transaction state when done
+	defer func() {
+		state.inTransaction = false
+		state.commandQueue = nil
+		state.transactionError = nil
+	}()
+
+	// if any command has validation error during queueing, abort transaction
+	if state.transactionError != nil {
+		conn.Write([]byte(protocol.EncodeError("EXECABORT Transaction discarded because of previous errors.")))
+		slog.Debug("Transaction aborted due to validation error", 
+			"error", state.transactionError,
+		)
+		return
+	}
+
+	results := make([]interface{}, len(state.commandQueue))
+	
+	slog.Debug("Executing transaction",
+		"command_count", len(state.commandQueue),
+	)
+	
+	cache.Lock()
+	defer cache.Unlock()
+
+	// execute each queued command and collect results
+	for i, cmdSlice := range state.commandQueue {
+		command := cmdSlice[0].(string)
+
+		// execute command and capture the response string
+		var response string
+		switch command {
+		case "SET":
+			response = executeSetCommand(cmdSlice, cache, aof, leader)
+		case "GET":
+			response = executeGetCommand(cmdSlice, cache)
+		case "DEL":
+			response = executeDeleteCommand(cmdSlice, cache, aof, leader)
+		case "DBSIZE":
+			response = executeDBSizeCommand(cache)
+		case "PING":
+			response = executePingCommand()
+		default:
+			response = protocol.EncodeError(fmt.Sprintf("ERR unknown command '%s'", command))
+		}
+
+		// store raw resp response
+		results[i] = response
+
+		slog.Debug("Transaction command executed",
+			"index", i,
+			"command", command,
+			"response_preview", response[:min(len(response), 50)],
+		)
+	}
+
+	// for persistence and replication
+	for _, cmdSlice := range state.commandQueue {
+		command := cmdSlice[0].(string)
+
+		switch command {
+		case "SET":
+			// extract key, value, and handle ttl
+			key := cmdSlice[1].(string)
+			value := cmdSlice[2].(string)
+			
+			ttlSeconds := int64(0)
+			
+			if len(cmdSlice) == 4 {
+				// Parse TTL from the command
+				ttlStr := cmdSlice[3].(string)
+				ttlSec, err := strconv.Atoi(ttlStr)
+				if err == nil {
+					ttlSeconds = int64(ttlSec)
+				}
+			}
+
+			// replicate to followers
+			if leader != nil {
+				err := leader.Replicate(replication.OpSet, key, value, ttlSeconds)
+				if err != nil {
+					slog.Error("Replication failed in transaction",
+						"operation", "SET",
+						"key", key,
+						"error", err,
+					)
+				}
+			}
+
+			// write to aof
+			ttlSecondsStr := strconv.FormatInt(ttlSeconds, 10)
+			aofCommand := protocol.EncodeArray([]interface{}{"SET", key, value, ttlSecondsStr})
+			err := aof.Append(aofCommand)
+			if err != nil {
+				slog.Error("AOF write failed in transaction",
+					"operation", "SET",
+					"key", key,
+					"error", err,
+				)
+			}
+		case "DEL":
+			// extract key
+			key := cmdSlice[1].(string)
+			
+			// replicate to followers
+			if leader != nil {
+				err := leader.Replicate(replication.OpDelete, key, "", 0)
+				if err != nil {
+					slog.Error("Replication failed in transaction",
+						"operation", "DEL",
+						"key", key,
+						"error", err,
+					)
+				}
+			}
+			
+			// write to aof
+			aofCommand := protocol.EncodeArray([]interface{}{"DEL", key})
+			err := aof.Append(aofCommand)
+			if err != nil {
+				slog.Error("AOF write failed in transaction",
+					"operation", "DEL",
+					"key", key,
+					"error", err,
+				)
+			}
+		}
+	}
+
+	// build resp array response containing all command results
+	arrayResponse := fmt.Sprintf("*%d\r\n", len(results))
+	for _, result := range results {
+		arrayResponse += result.(string)
+	}
+
+	conn.Write([]byte(arrayResponse))
+	
+	slog.Debug("Transaction completed successfully",
+		"commands_executed", len(results),
+	)
+}
+
+// cancel a transaction with discard
+func handleDiscard(conn net.Conn, state *ConnectionState) {
+	// check if we're in a transaction
+	if !state.inTransaction {
+		conn.Write([]byte(protocol.EncodeError("ERR DISCARD without MULTI")))
+		slog.Debug("DISCARD called without MULTI")
+		return
+	}
+
+	// clear transaction state
+	queuedCount := len(state.commandQueue)
+	state.inTransaction = false
+	state.commandQueue = nil
+	state.transactionError = nil
+
+	// send ok response
+	conn.Write([]byte(protocol.EncodeSimpleString("OK")))
+
+	slog.Debug("Transaction discarded",
+		"queued_commands_discarded", queuedCount,
+	)
+}
+
+// execute set command and return RESP formatted response
+func executeSetCommand(resultSlice []interface{}, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader) string {
+	// validate arguments
+	if len(resultSlice) < 3 || len(resultSlice) > 4 {
+		return protocol.EncodeError("ERR wrong number of arguments for 'set' command")
+	}
+
+	key := resultSlice[1].(string)
+	value := resultSlice[2].(string)
+
+	slog.Info("executeSetCommand called",
+        "key", key,
+        "value", value,
+        "arg_count", len(resultSlice),
+    )
+
+	ttl := time.Duration(0)
+
+	// parse ttl if found
+	if len(resultSlice) == 4 {
+		slog.Info("Parsing TTL",
+            "ttl_arg", resultSlice[3],
+            "ttl_type", fmt.Sprintf("%T", resultSlice[3]),
+        )
+
+		seconds := resultSlice[3].(string)
+		ttlSec, err := strconv.Atoi(seconds)
+		if err != nil {
+			slog.Error("Failed to parse TTL",
+                "seconds_str", seconds,
+                "error", err,
+            )
+
+			return protocol.EncodeError("ERR value is not an integer or out of range")
+		}
+		ttl = time.Duration(ttlSec) * time.Second
+
+		slog.Info("TTL parsed successfully",
+            "ttl_seconds", ttlSec,
+            "ttl_duration", ttl,
+        )
+	}
+
+	// assume lock is already held by caller
+	cache.SetInternal(key, value, ttl)
+
+	slog.Info("Set operation completed", "key", key)
+	
+	return protocol.EncodeSimpleString("OK")
+}
+
+// execute GET command return RESP formatted response
+func executeGetCommand(resultSlice []interface{}, cache *cache.Cache) string {
+	if len(resultSlice) != 2 {
+		return protocol.EncodeError("ERR wrong number of arguments for 'get' command")
+	}
+
+	key := resultSlice[1].(string)
+
+	result, exists := cache.GetInternal(key)
+
+	if !exists {
+		// return null bulk string for missing keys
+		return protocol.EncodeBulkString("", true)
+	}
+	
+	return protocol.EncodeBulkString(result, false)
+}
+
+// execute DEL command return resp formatted response
+func executeDeleteCommand(resultSlice []interface{}, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader) string {
+	if len(resultSlice) != 2 {
+		return protocol.EncodeError("ERR wrong number of arguments for 'del' command")
+	}
+
+	key := resultSlice[1].(string)
+
+	// delete from cache
+	cache.DeleteInternal(key)
+
+	return protocol.EncodeSimpleString("OK")
+}
+
+// execute DBSIZE command and return RESP formatted response
+func executeDBSizeCommand(cache *cache.Cache) string {
+	keys := cache.GetAllKeys()
+	count := len(keys)
+	return fmt.Sprintf(":%d\r\n", count)
+}
+
+// execute PING command and return RESP formmated response
+func executePingCommand() string {
+	return protocol.EncodeSimpleString("PONG")
 }
 
 // process subscribe commands
@@ -499,4 +909,12 @@ func handleDBSize(conn net.Conn, cache *cache.Cache) {
 // responds to PING with PONG
 func handlePing(conn net.Conn) {
 	conn.Write([]byte(protocol.EncodeSimpleString("PONG")))
+}
+
+// helper function for min
+func min(a, b int) int {
+    if a < b {
+        return a
+    }
+    return b
 }

@@ -27,10 +27,13 @@ func recoverAOF(cache *cache.Cache, aof *persistence.AOF, aofName string, snapsh
 				"file", snapshotName,
 				"error", err,
 			)
+			return fmt.Errorf("error loading snapshot: %v", err)
 		}
-		return fmt.Errorf("error loading snapshot: %v", err)
+		slog.Info("Snapshot loaded successfully", 
+			"file", snapshotName,
+		)
 	} else {
-		slog.Info("Snapshot loaded successfully", "file", snapshotName)
+		slog.Info("No snapshot file found, will start from AOF or empty", "file", snapshotName)
 	}
 
 	// check for aof file
