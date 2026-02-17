@@ -1,21 +1,35 @@
 package main
 
 import (
-	"net"
-	"time"
-	"log/slog"
 	"fmt"
+	"log/slog"
+	"net"
+	"sync"
+	"time"
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/cluster"
 	"github.com/erickim73/gocache/internal/config"
+	"github.com/erickim73/gocache/internal/metrics"
 	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/internal/pubsub"
 	"github.com/erickim73/gocache/internal/replication"
 	"github.com/erickim73/gocache/internal/server"
-	"github.com/erickim73/gocache/internal/metrics"
 	"github.com/google/uuid"
 )
+
+var (
+	packageMetricsCollector *metrics.Collector
+	packageMetricsOnce      sync.Once
+)
+
+// get or create shared collector
+func getMetricsCollector() *metrics.Collector {
+	packageMetricsOnce.Do(func() {
+		packageMetricsCollector = metrics.NewCollector()
+	})
+	return packageMetricsCollector
+}
 
 func startSimpleMode(cfg *config.Config) {
 	// print values to verify
@@ -30,7 +44,7 @@ func startSimpleMode(cfg *config.Config) {
 	)
 	
 	// create a cache
-	metricsCollector := metrics.NewCollector()
+	metricsCollector := getMetricsCollector()
 	myCache, err := cache.NewCache(cfg.MaxCacheSize, metricsCollector)
 	if err != nil {
 		slog.Error("Failed to create cache", "error", err)
@@ -153,7 +167,7 @@ func startClusterMode(cfg *config.Config) {
 	}
 
 	// create a cache
-	metricsCollector := metrics.NewCollector()
+	metricsCollector := getMetricsCollector()
 	myCache, err := cache.NewCache(cfg.MaxCacheSize, metricsCollector)
 	if err != nil {
 		slog.Error("Error creating new cache", "error", err)
@@ -528,7 +542,7 @@ func startPendingNode(cfg *config.Config) {
 	)
 
 	// create cache
-	metricsCollector := metrics.NewCollector()
+	metricsCollector := getMetricsCollector()
 	myCache, err := cache.NewCache(cfg.MaxCacheSize, metricsCollector)
 	if err != nil {
 		slog.Error("Error creating new cache", "error", err)
