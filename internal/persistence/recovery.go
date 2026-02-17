@@ -1,4 +1,4 @@
-package main
+package persistence
 
 import (
 	"fmt"
@@ -6,19 +6,18 @@ import (
 	"log/slog"
 
 	"github.com/erickim73/gocache/internal/cache"
-	"github.com/erickim73/gocache/internal/persistence"
 
 )
 
 // reads aof and applies operations to cache
-func recoverAOF(cache *cache.Cache, aof *persistence.AOF, aofName string, snapshotName string) error {
+func RecoverAOF(cache *cache.Cache, aof *AOF, aofName string, snapshotName string) error {
 	slog.Info("Starting AOF recovery",
 		"aof_file", aofName,
 		"snapshot_file", snapshotName,
 	)
 
 	// check for snapshot first
-	if persistence.SnapshotExists(snapshotName) {
+	if SnapshotExists(snapshotName) {
 		slog.Info("Snapshot file found, loading...", "file", snapshotName)
 		
 		err := aof.LoadSnapshot()
@@ -37,7 +36,7 @@ func recoverAOF(cache *cache.Cache, aof *persistence.AOF, aofName string, snapsh
 	}
 
 	// check for aof file
-	if persistence.AofExists(aofName) {
+	if AofExists(aofName) {
 		slog.Info("AOF file found, reading operations...", "file", aofName)
 
 		ops, err := aof.ReadOperations()

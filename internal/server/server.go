@@ -1,6 +1,7 @@
-package main
+package server
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net"
@@ -14,7 +15,6 @@ import (
 	"github.com/erickim73/gocache/internal/persistence"
 	"github.com/erickim73/gocache/internal/pubsub"
 	"github.com/erickim73/gocache/internal/replication"
-	"github.com/erickim73/gocache/internal/server"
 	"github.com/google/uuid"
 )
 
@@ -31,8 +31,22 @@ func getMetricsCollector() *metrics.Collector {
 	return packageMetricsCollector
 }
 
-func startSimpleMode(cfg *config.Config) {
-	// print values to verify
+type Server struct {
+	cfg *config.Config
+	listener net.Listener
+	cancel context.CancelFunc
+	wg sync.WaitGroup
+}
+
+// creates a server ready to be started
+func New(cfg *config.Config) *Server {
+	return &Server{cfg: cfg}
+}
+
+// runs the server and blocks until stop() is called
+func (s *Server) Start() {
+	cfg := s.cfg
+
 	slog.Info("Starting simple mode server",
 		"port", cfg.Port,
 		"max_cache_size", cfg.MaxCacheSize,
@@ -42,7 +56,12 @@ func startSimpleMode(cfg *config.Config) {
 		"snapshot_interval", cfg.SnapshotInterval,
 		"growth_factor", cfg.GrowthFactor,
 	)
-	
+
+	// create a cancellable context
+	ctx, cancel := context.WithCancel(context.Background())
+	s.cancel = cancel
+	defer cancel()
+
 	// create a cache
 	metricsCollector := getMetricsCollector()
 	myCache, err := cache.NewCache(cfg.MaxCacheSize, metricsCollector)
@@ -66,7 +85,7 @@ func startSimpleMode(cfg *config.Config) {
 	defer aof.Close()
 
 	// recovery
-	err = recoverAOF(myCache, aof, cfg.AOFFileName, cfg.SnapshotFileName)
+	err = persistence.RecoverAOF(myCache, aof, cfg.AOFFileName, cfg.SnapshotFileName)
 	if err != nil {
 		slog.Error("Failed to recover from AOF", "error", err)
 		return
@@ -76,7 +95,10 @@ func startSimpleMode(cfg *config.Config) {
 	ps := pubsub.NewPubSub()
 
 	// create node state
-	nodeState, err := server.NewNodeState(cfg.Role, nil, "")
+	nodeState, err := NewNodeState(cfg.Role, nil, "")
+	if err != nil {
+		slog.Error("Failed to create node state", "error", err)
+	}
 
 	var leader *replication.Leader
 
@@ -97,7 +119,7 @@ func startSimpleMode(cfg *config.Config) {
 		}
 		go follower.Start()
 		slog.Info("Started as follower", "leader_address", cfg.LeaderAddr)
-	}
+	}	
 	
 	// create a tcp listener on a port 
 	address := fmt.Sprintf("0.0.0.0:%d", cfg.Port)
@@ -106,16 +128,30 @@ func startSimpleMode(cfg *config.Config) {
 		slog.Error("Failed to create listener", "address", address, "error", err)
 		return
 	}
+
+	s.listener = listener
 	defer listener.Close()
 
 	slog.Info("Cache server listening", "address", address)
+
+	// register with WaitGroup so Stop() can block until accept loop has actually exited before returning to caller
+	s.wg.Add(1)
+	defer s.wg.Done()
+
 
 	for {
 		// accept an incoming connection
 		conn, err := listener.Accept()
 		if err != nil {
-			slog.Warn("Error accepting connection", "error", err)
-			continue
+			// check context before deciding what to do with error
+			select {
+			case <- ctx.Done():
+				slog.Info("Server shutting down cleanly")
+				return // intentional stop
+			default:
+				slog.Warn("Error accepting connection", "error", err)
+				continue
+			}
 		}
 
 		// handle connection in a separate goroutine
@@ -123,7 +159,18 @@ func startSimpleMode(cfg *config.Config) {
 	}
 }
 
-func startClusterMode(cfg *config.Config) {
+// signals Start() to exit and waits until it has
+func (s *Server) Stop() {
+	if s.cancel != nil {
+		s.cancel() // signal the accept loop that this is an intentional stop
+	}
+	if s.listener != nil {
+		s.listener.Close() // unblock any pending Accept() call
+	}
+	s.wg.Wait() // don't return  until the accept loop has fully exited
+}
+
+func StartClusterMode(cfg *config.Config) {
 	// get my node info
 	myNode, err := cfg.GetMyNode()
 	if err != nil {
@@ -189,7 +236,7 @@ func startClusterMode(cfg *config.Config) {
 	defer aof.Close()
 
 	// recovery
-	err = recoverAOF(myCache, aof, cfg.AOFFileName, cfg.SnapshotFileName)
+	err = persistence.RecoverAOF(myCache, aof, cfg.AOFFileName, cfg.SnapshotFileName)
 	if err != nil {
 		slog.Error("Error recovering from AOF", "error", err)
 		return
@@ -261,7 +308,7 @@ func startClusterMode(cfg *config.Config) {
 // helper function to start this node as a leader
 func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persistence.AOF, cfg *config.Config, hashRing *cluster.HashRing) {
 	// create node state
-	nodeState, err := server.NewNodeState("leader", nil, "")
+	nodeState, err := NewNodeState("leader", nil, "")
 	if err != nil {
 		slog.Error("Error creating node state", "error", err)
 		return
@@ -375,7 +422,7 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 // helper function to start this node as a follower
 func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persistence.AOF, leaderAddr string, clusterNodes []config.NodeInfo, cfg *config.Config, hashRing *cluster.HashRing) {
 	// create node state
-	nodeState, err := server.NewNodeState("follower", nil, leaderAddr)
+	nodeState, err := NewNodeState("follower", nil, leaderAddr)
 	if err != nil {
 		slog.Error("Error creating node state", "error", err)
 		return
@@ -508,7 +555,7 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 }
 
 // helper function to start tcp listener for client connections
-func startClientListener(port int, myCache *cache.Cache, aof *persistence.AOF, nodeState *server.NodeState) {
+func startClientListener(port int, myCache *cache.Cache, aof *persistence.AOF, nodeState *NodeState) {
 	address := fmt.Sprintf("0.0.0.0:%d", port)
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
@@ -558,7 +605,7 @@ func startPendingNode(cfg *config.Config) {
 	defer aof.Close()
 
 	// recovery
-	err = recoverAOF(myCache, aof, cfg.AOFFileName, cfg.SnapshotFileName)
+	err = persistence.RecoverAOF(myCache, aof, cfg.AOFFileName, cfg.SnapshotFileName)
 	if err != nil {
 		slog.Error("Error recovering from AOF", "error", err)
 		return
@@ -581,7 +628,7 @@ func startPendingNode(cfg *config.Config) {
 	slog.Info("Hash ring initialized", "num_nodes", len(cfg.Nodes))
 
 	// create node state (no replication yet)
-	nodeState, err := server.NewNodeState("pending", nil, "")
+	nodeState, err := NewNodeState("pending", nil, "")
 	if err != nil {
 		slog.Error("Error creating node state", "error", err)
 		return

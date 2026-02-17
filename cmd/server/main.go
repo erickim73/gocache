@@ -5,6 +5,7 @@ import (
 	
 	"github.com/erickim73/gocache/internal/config"
 	"github.com/erickim73/gocache/internal/logger"
+	"github.com/erickim73/gocache/internal/server"
 )
 
 func main() {
@@ -53,9 +54,10 @@ func main() {
 	// determine which mode we're in 
 	if cfg.IsClusterMode() {
 		slog.Info("Starting in CLUSTER mode", "node_id", cfg.NodeID)
-		startClusterMode(cfg)
+		server.StartClusterMode(cfg)
 	} else {
 		slog.Info("Starting in SIMPLE mode")
-		startSimpleMode(cfg)
+		srv := server.New(cfg)
+		srv.Start()
 	}
 }
