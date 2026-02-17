@@ -3,7 +3,6 @@ package harness
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"math/rand"
 	"net"
@@ -505,94 +504,4 @@ func (m *ChaosMonkey) maybeKill() {
 	m.mu.Lock()
 	m.killed = append(m.killed, victim)
 	m.mu.Unlock()
-}
-
-// startStubServer starts a minimal TCP server that accepts connections and returns canned RESP responses — just enough for the harness and test structure to work before your real server is wired in.
-func startStubServer(t testing.TB, addr, role string) func() {
-	t.Helper()
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		t.Fatalf("stub server: listen %s: %v", addr, err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				select {
-				case <-ctx.Done():
-					return // clean shutdown — suppress "use of closed network connection"
-				default:
-					continue
-				}
-			}
-			go handleStubConn(conn)
-		}
-	}()
-
-	// stopFn cancels the context and closes the listener.
-	return func() {
-		cancel()
-		ln.Close()
-	}
-}
-
-// reads RESP commands and returns canned responses.
-func handleStubConn(conn net.Conn) {
-	defer conn.Close()
-	r := bufio.NewReader(conn)
-
-	for {
-		// every RESP command starts with *<count>\r\n
-		line, err := r.ReadString('\n')
-		if err != nil {
-			return // connection closed
-		}
-		line = strings.TrimRight(line, "\r\n")
-		if len(line) == 0 || line[0] != '*' {
-			conn.Write([]byte("+OK\r\n"))
-			continue
-		}
-
-		var count int
-		fmt.Sscanf(line[1:], "%d", &count)
-
-		// read all args so the reader stays aligned for the next command.
-		args := make([]string, 0, count)
-		for i := 0; i < count; i++ {
-			// read $<len>\r\n header
-			header, err := r.ReadString('\n')
-			if err != nil {
-				return
-			}
-			header = strings.TrimRight(header, "\r\n")
-			var argLen int
-			fmt.Sscanf(header[1:], "%d", &argLen)
-			// read <arg>\r\n body (argLen bytes + 2 for \r\n)
-			body := make([]byte, argLen+2)
-			r.Read(body)
-			args = append(args, string(body[:argLen]))
-		}
-
-		if len(args) == 0 {
-			conn.Write([]byte("+OK\r\n"))
-			continue
-		}
-
-		// return realistic responses for common commands.
-		switch strings.ToUpper(args[0]) {
-		case "PING":
-			conn.Write([]byte("+PONG\r\n"))
-		case "GET":
-			conn.Write([]byte("$-1\r\n")) // null bulk — key not found
-		case "SET":
-			conn.Write([]byte("+OK\r\n"))
-		case "DEL":
-			conn.Write([]byte(":1\r\n")) // 1 key deleted
-		default:
-			conn.Write([]byte("+OK\r\n"))
-		}
-	}
 }
