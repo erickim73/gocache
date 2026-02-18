@@ -38,11 +38,16 @@ type Server struct {
 	leader *replication.Leader
 	cancel context.CancelFunc
 	wg sync.WaitGroup
+	connMu sync.Mutex
+	activeConns map[net.Conn]struct{}
 }
 
 // creates a server ready to be started
 func New(cfg *config.Config) *Server {
-	return &Server{cfg: cfg}
+	return &Server{
+		cfg: cfg,
+		activeConns: make(map[net.Conn]struct{}),
+	}
 }
 
 // runs the server and blocks until stop() is called
@@ -152,11 +157,24 @@ func (s *Server) Start() {
 				continue
 			}
 		}
+		// register connection so Stop() can close it
+		s.connMu.Lock()
+		s.activeConns[conn] = struct{}{}
+		s.connMu.Unlock()
 
 		// handle connection in a separate goroutine
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
+
+
+			// unregister on exit
+			defer func() {
+				s.connMu.Lock()
+				delete(s.activeConns, conn)
+				s.connMu.Unlock()
+			}()
+
 			handleConnection(conn, myCache, s.aof, nodeState, ps)
 		}()
 	}
@@ -179,6 +197,12 @@ func (s *Server) Stop() {
 	if s.listener != nil {
 		s.listener.Close()
 	}
+
+	s.connMu.Lock()
+    for conn := range s.activeConns {
+        conn.Close()
+    }
+    s.connMu.Unlock()
 
 	// wait for all active connections to finish
 	s.wg.Wait()

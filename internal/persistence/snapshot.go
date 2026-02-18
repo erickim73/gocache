@@ -243,6 +243,8 @@ func (aof *AOF) LoadSnapshot() error {
 }
 
 func (aof *AOF) checkSnapshotTrigger() {
+	defer aof.wg.Done()
+	
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
