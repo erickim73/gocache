@@ -31,9 +31,11 @@ type AOF struct {
 	policy SyncPolicy
 	cache *cache.Cache
 	done chan struct{}
+	wg sync.WaitGroup
 	growthFactor int64
 	lastRewriteSize int64
 	rewriting bool
+	rewriteMu sync.Mutex
 }
 
 type Operation struct {
@@ -68,10 +70,12 @@ func NewAOF (fileName string, snapshotName string, policy SyncPolicy, cache *cac
 	}
 
 	if policy == SyncEverySecond {
+		aof.wg.Add(1)
 		go aof.periodicSync()
 	}
 
 	// start periodic snapshot goroutine
+	aof.wg.Add(1)
 	go aof.checkSnapshotTrigger()
 
 	return aof, nil
@@ -103,6 +107,8 @@ func (aof *AOF) Append(data string) error {
 
 // For SyncEverySecond Policy
 func (aof *AOF) periodicSync() {
+	defer aof.wg.Done()
+	
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
@@ -122,6 +128,8 @@ func (aof *AOF) periodicSync() {
 
 func (aof *AOF) Close() error {
 	close(aof.done)
+
+	aof.wg.Wait()
 
 	return aof.file.Close()
 }
@@ -244,6 +252,7 @@ func (aof *AOF) rewriteAOF () error {
 	}
 
 	err = tempFile.Close()
+	tempFile = nil
 	if err != nil {
 		slog.Error("Closing tempfile failed", "error", err)
 		return fmt.Errorf("closing tempfile failed: %v", err)
@@ -285,9 +294,12 @@ func (aof *AOF) rewriteAOF () error {
 }
 
 func (aof *AOF) checkRewriteTrigger() {
+	aof.rewriteMu.Lock()
 	if aof.rewriting {
+		aof.rewriteMu.Unlock()
 		return
 	}
+	aof.rewriteMu.Unlock()
 
 	// current aof file size
 	info, err := aof.file.Stat()
@@ -309,6 +321,7 @@ func (aof *AOF) checkRewriteTrigger() {
 		// set flag and launch rewrite
 		aof.rewriting = true
 		
+		aof.wg.Add(1)
 		go func() {
 			err := aof.rewriteAOF()
 
@@ -321,5 +334,23 @@ func (aof *AOF) checkRewriteTrigger() {
 			}
 
 		}()
+	}
+}
+
+
+// checks done channel and decrements WaitGroup
+func (aof *AOF) checkSnapshotTrigger() {
+	defer aof.wg.Done()
+	
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			// for now, this is a placeholder
+		case <-aof.done:
+			return
+		}
 	}
 }

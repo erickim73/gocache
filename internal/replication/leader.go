@@ -2,6 +2,7 @@ package replication
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log/slog"
 	"net"
@@ -21,6 +22,9 @@ type Leader struct {
 	mu        sync.RWMutex
 	listener  net.Listener
 	replPort  int
+	ctx context.Context
+	cancel context.CancelFunc
+	wg sync.WaitGroup
 }
 
 type FollowerConn struct {
@@ -39,7 +43,6 @@ func NewLeader(cache *cache.Cache, aof *persistence.AOF, replPort int) (*Leader,
 		replPort = cfg.Port + 1
 	}
 
-
 	// create a tcp listener on a port
 	address := fmt.Sprintf("0.0.0.0:%d", replPort)
 	listener, err := net.Listen("tcp", address)
@@ -48,12 +51,17 @@ func NewLeader(cache *cache.Cache, aof *persistence.AOF, replPort int) (*Leader,
 		return nil, err
 	}
 
+	// create context for coordinating shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+
 	leader := &Leader{
 		cache:     cache,
 		followers: make([]*FollowerConn, 0),
 		seqNum:    0,
 		listener:  listener,
 		replPort:  replPort,
+		ctx: ctx,
+		cancel: cancel,
 	}
 
 	return leader, nil
@@ -62,6 +70,8 @@ func NewLeader(cache *cache.Cache, aof *persistence.AOF, replPort int) (*Leader,
 func (l *Leader) Start() error {
 	slog.Info("Leader replication server listening", "port", l.replPort)
 
+	// increment WaitGroup for background goroutine so Close() can wait for them
+	l.wg.Add(2)
 	// goroutine to send and monitor heart beats
 	go l.sendHeartbeats()
 	go l.monitorFollowerHealth()
@@ -69,15 +79,34 @@ func (l *Leader) Start() error {
 	for {
 		conn, err := l.listener.Accept()
 		if err != nil {
-			slog.Error("Error accepting connection", "error", err)
+			// check if this is intentional shutdown
+			select {
+			case <- l.ctx.Done():
+				slog.Info("Leader replication server shutting down cleanly")
+				return nil
+			default:
+				slog.Warn("Error accepting follower connection", "error", err)
+				continue
+			}
 		}
-
-		go l.handleFollower(conn)
+		
+		// only spawn goroutine if conn is non-nil
+		if conn != nil {
+			go l.handleFollower(conn)
+		}
 	}
 }
 
 func (l *Leader) Close() error {
-	return l.listener.Close()
+	// signal all goroutines to stop
+	l.cancel()
+
+	// close listener to unblock Accept()
+	err := l.listener.Close()
+
+	l.wg.Wait()
+
+	return err
 }
 
 func (l *Leader) handleFollower(conn net.Conn) {
@@ -266,77 +295,85 @@ func (l *Leader) Replicate(operation string, key string, value string, ttl int64
 }
 
 func (l *Leader) sendHeartbeats() {
+	defer l.wg.Done()
+
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	slog.Info("Leader heartbeat sender started")
 
 	leaderID := "leader"
-	for range ticker.C {
-		// snapshot seqNum + followers list
-		l.mu.RLock()
-		seq := l.seqNum
-		followersCopy := make([]*FollowerConn, len(l.followers))
-		copy(followersCopy, l.followers)
-		l.mu.RUnlock()
+	for {
+		select {
+		case <- l.ctx.Done():
+			slog.Info("Leader heartbeat sender stopping")
+			return
+		case <- ticker.C:
+			l.mu.RLock()
+			seq := l.seqNum
+			followersCopy := make([]*FollowerConn, len(l.followers))
+			copy(followersCopy, l.followers)
+			l.mu.RUnlock()
 
-		// build heartbeat command
-		heartbeat := &HeartbeatCommand{
-			SeqNum: seq,
-			NodeID: leaderID,
-		}
-		encoded, err := EncodeHeartbeatCommand(heartbeat)
-		if err != nil {
-			slog.Error("Failed to encode heartbeat", "error", err)
-			continue
-		}
-
-		// send to each follower
-		for _, follower := range followersCopy {
-			follower.mu.Lock()
-			_, err := follower.conn.Write(encoded)
-			follower.mu.Unlock()
-
+			heartbeat := &HeartbeatCommand{
+				SeqNum: seq,
+				NodeID: leaderID,
+			}
+			encoded, err := EncodeHeartbeatCommand(heartbeat)
 			if err != nil {
-				slog.Error("Heartbeat write failed to follower", "follower_id", follower.id, "error", err)
+				slog.Error("Failed to encode heartbeat", "error", err)
+				continue
+			}
+
+			for _, follower := range followersCopy {
+				follower.mu.Lock()
+				_, err := follower.conn.Write(encoded)
+				follower.mu.Unlock()
+
+				if err != nil {
+					slog.Error("Heartbeat write failed to follower", "follower_id", follower.id, "error", err)
+				}
 			}
 		}
 	}
 }
 
 func (l *Leader) monitorFollowerHealth() {
+	defer l.wg.Done()
+	
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
 	timeout := 15 * time.Second
 
-	for range ticker.C {
-		// copy followers list
-		l.mu.RLock()
-		followersCopy := make([]*FollowerConn, len(l.followers))
-		copy(followersCopy, l.followers)
-		l.mu.RUnlock()
+	for {
+		select {
+		case <- l.ctx.Done():
+			slog.Info("Leader health monitor stopping")
+			return
+		case <- ticker.C:
+			l.mu.RLock()
+			followersCopy := make([]*FollowerConn, len(l.followers))
+			copy(followersCopy, l.followers)
+			l.mu.RUnlock()
 
-		// check each followers last heartbeat
-		for _, follower := range followersCopy {
-			follower.heartbeatMu.RLock()
-			last := follower.lastHeartbeat
-			follower.heartbeatMu.RUnlock()
+			for _, follower := range followersCopy {
+				follower.heartbeatMu.RLock()
+				last := follower.lastHeartbeat
+				follower.heartbeatMu.RUnlock()
 
-			// if never set, skip
-			if last.IsZero() {
-				continue
-			}
+				if last.IsZero() {
+					continue
+				}
 
-			if time.Since(last) > timeout {
-				slog.Warn("Follower is dead (no heartbeat)", "follower_id", follower.id, "time_since_heartbeat", time.Since(last))
+				if time.Since(last) > timeout {
+					slog.Warn("Follower is dead (no heartbeat)", "follower_id", follower.id, "time_since_heartbeat", time.Since(last))
 
-				// close connection
-				follower.mu.Lock()
-				_ = follower.conn.Close()
-				follower.mu.Unlock()
+					follower.mu.Lock()
+					_ = follower.conn.Close()
+					follower.mu.Unlock()
+				}
 			}
 		}
 	}
-
 }
