@@ -131,10 +131,13 @@ func (h *TestHarness) StartLeader() *NodeHandle {
 // starts a follower that replicates from leader. blocks until the follower has connected to the leader and is ready.
 func (h *TestHarness) StartFollower(leader *NodeHandle) *NodeHandle {
 	h.t.Helper()
+	replPort := leader.Port() + 1000
+	leaderReplAddr := fmt.Sprintf("127.0.0.1:%d", replPort)
+
 	return h.startNode(NodeConfig{
 		Port:        getFreePort(h.t),
 		Role:        "follower",
-		LeaderAddr:  leader.Addr(),
+		LeaderAddr:  leaderReplAddr,
 		MaxMemoryMB: 64,
 	})
 }
@@ -173,16 +176,16 @@ func (h *TestHarness) startNode(cfg NodeConfig) *NodeHandle {
 
 	srv := server.New(serverCfg)
 
-	errCh := make(chan struct{}, 1)
+	doneCh := make(chan struct{}, 1)
 	go func() {
 		srv.Start()
-		errCh <- struct{}{} // signal that Start() has returned
+		doneCh <- struct{}{}
 	}()
 
 	// above to exit, giving deferred closes (AOF, listener) time to finish.
 	stopFn := func() {
 		srv.Stop()
-		<-errCh // drain so the goroutine exits cleanly
+		<-doneCh // drain so the goroutine exits cleanly
 	}
 
 
