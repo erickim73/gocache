@@ -265,6 +265,9 @@ func (aof *AOF) rewriteAOF () error {
 	// save old file
 	oldFile := aof.file
 
+	// close old file
+	oldFile.Close()
+	
 	// rename temp file to original
 	err = os.Rename(tempName, aof.fileName)
 	if err != nil {
@@ -281,8 +284,6 @@ func (aof *AOF) rewriteAOF () error {
 	
 	aof.file = newFile
 
-	// close old file
-	oldFile.Close()
 
 	// update baseline size
 	info, _ := os.Stat(aof.fileName)
@@ -334,23 +335,5 @@ func (aof *AOF) checkRewriteTrigger() {
 			}
 
 		}()
-	}
-}
-
-
-// checks done channel and decrements WaitGroup
-func (aof *AOF) checkSnapshotTrigger() {
-	defer aof.wg.Done()
-	
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			// for now, this is a placeholder
-		case <-aof.done:
-			return
-		}
 	}
 }
