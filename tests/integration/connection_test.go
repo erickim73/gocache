@@ -37,7 +37,7 @@ func TestMultipleConcurrentClients(t *testing.T) {
 
 			// write a unique key-value pair
 			key := fmt.Sprintf("key-%d", clientID)
-			value := fmt.Sprintf("valud-%d", clientID)
+			value := fmt.Sprintf("value-%d", clientID)
 			if got := client.Set(key, value); got != "OK" {
 				errCh <- fmt.Errorf("client %d: SET failed: got %q", clientID, got)
 				return
@@ -49,15 +49,14 @@ func TestMultipleConcurrentClients(t *testing.T) {
 				return
 			}
 		}()
+	}
+	// wait for all clients to finish
+	wg.Wait()
+	close(errCh)
 
-		// wait for all clients to finish
-		wg.Wait()
-		close(errCh)
-
-		// check if any goroutine reported an error
-		for err := range errCh {
-			t.Error(err)
-		}
+	// check if any goroutine reported an error
+	for err := range errCh {
+		t.Error(err)
 	}
 }
 

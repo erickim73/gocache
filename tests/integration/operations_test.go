@@ -66,7 +66,7 @@ func TestTTLExpiration(t *testing.T) {
 	}
 
 	// immediately verify the key exists
-	if got := client.Get("tto-key"); got != "tto-value" {
+	if got := client.Get("ttl-key"); got != "ttl-value" {
 		t.Errorf("GET immediately after SET: expected ttl-value, got %q", got)
 	}
 
