@@ -440,8 +440,6 @@ func (f *Follower) sendHeartbeats(conn net.Conn) {
 		f.mu.Unlock()
 
 		if err != nil {
-			// connection is dead so close.
-			f.closeConn()
 			return
 		}
 	}
@@ -459,7 +457,10 @@ func (f *Follower) monitorLeaderHealth(conn net.Conn) {
 		current := f.conn
 		f.mu.RUnlock()
 
-		if current == nil || current != conn {
+		f.promotedMu.RLock()
+		promoted := f.promoted
+		f.promotedMu.RUnlock()
+		if promoted {
 			return
 		}
 
@@ -483,8 +484,11 @@ func (f *Follower) monitorLeaderHealth(conn net.Conn) {
 			f.isLeaderAlive = false
 			f.heartbeatMu.Unlock()
 
-			// force reconnection / election
-			f.closeConn()
+			if current != nil {
+				f.closeConn()
+			}
+
+			// force election
 			go f.startElection()
 			return
 		} else {
