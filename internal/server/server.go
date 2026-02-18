@@ -41,6 +41,7 @@ type Server struct {
 	wg sync.WaitGroup
 	connMu sync.Mutex
 	activeConns map[net.Conn]struct{}
+	replPort int 
 }
 
 // creates a server ready to be started
@@ -49,6 +50,11 @@ func New(cfg *config.Config) *Server {
 		cfg: cfg,
 		activeConns: make(map[net.Conn]struct{}),
 	}
+}
+
+// expose actual replication port for use by tests/harness
+func (s *Server) ReplPort() int {
+	return s.replPort
 }
 
 // runs the server and blocks until stop() is called
@@ -114,9 +120,24 @@ func (s *Server) Start() {
 		}
 		s.leader, err = replication.NewLeader(myCache, s.aof, replPort)
 		if err != nil {
-			slog.Error("Failed to create leader", "error", err)
-			return
+			slog.Warn("Failed to bind computed replication port, falling back to dynamic port",
+				"attempted_port", replPort, "error", err)
+			ln, lnErr := net.Listen("tcp", "127.0.0.1:0")
+			if lnErr != nil {
+				slog.Error("Failed to create leader", "error", err)
+				return
+			}
+			replPort = ln.Addr().(*net.TCPAddr).Port
+			ln.Close() // release so NewLeader can bind it immediately
+			slog.Info("Using dynamic replication port", "port", replPort)
+			s.leader, err = replication.NewLeader(myCache, s.aof, replPort)
+			if err != nil {
+				slog.Error("Failed to create leader", "error", err)
+				return
+			}
 		}
+		// store actual port used so callers can read
+		s.replPort = replPort
 
 		nodeState.SetLeader(s.leader)
 		go s.leader.Start()

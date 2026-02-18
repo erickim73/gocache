@@ -69,6 +69,7 @@ type NodeHandle struct {
 	addr   string // "127.0.0.1:<port>"
 	stopFn func() // calls the real server's Stop
 	alive  atomic.Bool
+	srv *server.Server
 }
 
 // returns the "host:port" this node is listening on.
@@ -82,6 +83,11 @@ func (n *NodeHandle) Role() string { return n.cfg.Role }
 
 // reports whether this node is still running.
 func (n *NodeHandle) IsAlive() bool { return n.alive.Load() }
+
+// returns actual replication port the leader is bound to
+func (n *NodeHandle) ReplPort() int {
+	return n.srv.ReplPort()
+}
 
 // shuts the node down cleanly and releases its port.
 func (n *NodeHandle) Stop() {
@@ -130,8 +136,7 @@ func (h *TestHarness) StartLeader() *NodeHandle {
 // starts a follower that replicates from leader. blocks until the follower has connected to the leader and is ready.
 func (h *TestHarness) StartFollower(leader *NodeHandle) *NodeHandle {
 	h.t.Helper()
-	replPort := leader.Port() + 1000
-	leaderReplAddr := fmt.Sprintf("127.0.0.1:%d", replPort)
+	leaderReplAddr := fmt.Sprintf("127.0.0.1:%d", leader.ReplPort())
 
 	return h.startNode(NodeConfig{
 		Port:        getFreePort(h.t),
@@ -189,12 +194,12 @@ func (h *TestHarness) startNode(cfg NodeConfig) *NodeHandle {
 		<-doneCh // drain so the goroutine exits cleanly
 	}
 
-
 	node := &NodeHandle{
 		t:      h.t,
 		cfg:    cfg,
 		addr:   addr,
 		stopFn: stopFn,
+		srv: srv,
 	}
 	node.alive.Store(true)
 

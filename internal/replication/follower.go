@@ -576,7 +576,7 @@ func (f *Follower) startElection() {
 	}
 
 	// create leader with existing aof
-	leader, err := NewLeader(f.cache, f.aof, f.myReplPort)
+	leader, err := NewLeader(f.cache, f.aof, replPort)
 	if err != nil {
 		slog.Error("Error creating leader", "error", err)
 		
