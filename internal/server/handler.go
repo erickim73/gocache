@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/erickim73/gocache/internal/cache"
@@ -282,7 +283,7 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 			duration := time.Since(startTime)
 			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
 		default:
-			conn.Write([]byte(protocol.EncodeError("Unknown command " + command.(string))))
+			conn.Write([]byte(protocol.EncodeError("ERR Unknown command '" + command.(string) + "'")))
 			// record latency for unknown commands
 			duration := time.Since(startTime)
 			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
@@ -802,14 +803,28 @@ func handleSet(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, aof
 	ttl := time.Duration(0)
 
 	// if ttl provided as a 4th argument
-	if len(resultSlice) == 4 {
-		seconds := resultSlice[3].(string)
-		ttlSec, err := strconv.Atoi(seconds)
+	if len(resultSlice) == 5 {
+		qualifier := strings.ToUpper(resultSlice[3].(string))
+		if qualifier != "EX" {
+            conn.Write([]byte(protocol.EncodeError("ERR syntax error")))
+            return
+        }
+		ttlSec, err := strconv.Atoi(resultSlice[4].(string))
+        if err != nil {
+            conn.Write([]byte(protocol.EncodeError("ERR value is not an integer")))
+            return
+        }
+        ttl = time.Duration(ttlSec) * time.Second
+	} else if len(resultSlice) == 4 {
+		ttlSec, err := strconv.Atoi(resultSlice[3].(string))
 		if err != nil {
 			conn.Write([]byte(protocol.EncodeError("Couldn't convert seconds to a string")))
 			return
 		}
 		ttl = time.Duration(ttlSec) * time.Second
+	} else if len(resultSlice) != 3 {
+		conn.Write([]byte(protocol.EncodeError("ERR wrong number of arguments")))
+		return
 	}
 
 	cache.Set(key, value, ttl)
