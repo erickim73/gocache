@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"bufio"
@@ -8,12 +8,11 @@ import (
 	"log/slog"
 
 	"github.com/erickim73/gocache/internal/cache"
-	"github.com/erickim73/gocache/internal/server"
 	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 // routes CLUSTER subcommands to appropriate handles
-func handleClusterCommand(conn net.Conn, command []interface{}, cache *cache.Cache, nodeState *server.NodeState) {
+func handleClusterCommand(conn net.Conn, command []interface{}, cache *cache.Cache, nodeState *NodeState) {
 	if len(command) < 2 {
 		conn.Write([]byte(protocol.EncodeError("CLUSTER command requires subcommand")))
 		return
@@ -40,7 +39,7 @@ func handleClusterCommand(conn net.Conn, command []interface{}, cache *cache.Cac
 }
 
 
-func handleClusterTopology(conn net.Conn, command []interface{}, nodeState *server.NodeState) {
+func handleClusterTopology(conn net.Conn, command []interface{}, nodeState *NodeState) {
 	if len(command) < 5 {
 		conn.Write([]byte(protocol.EncodeError("TOPOLOGY requires operation, nodeID, and address")))
 		return
@@ -83,7 +82,7 @@ func handleClusterTopology(conn net.Conn, command []interface{}, nodeState *serv
 
 // adds a new node to the cluster and triggers data migration
 // command format: CLUSTER ADDNODE <nodeID> <address>
-func handleClusterAddNode(conn net.Conn, command []interface{}, cache *cache.Cache, nodeState *server.NodeState) {
+func handleClusterAddNode(conn net.Conn, command []interface{}, cache *cache.Cache, nodeState *NodeState) {
 	if len(command) < 4 {
 		conn.Write([]byte(protocol.EncodeError("ADDNODE requires nodeID and address")))
 		return
@@ -197,7 +196,7 @@ func handleClusterAddNode(conn net.Conn, command []interface{}, cache *cache.Cac
 }
 
 // removes a node from the cluster
-func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.Cache, nodeState *server.NodeState) {
+func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.Cache, nodeState *NodeState) {
 	if len(command) < 3 {
 		conn.Write([]byte(protocol.EncodeError("REMOVENODE requires nodeID")))
 		return
@@ -293,7 +292,7 @@ func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.
 }
 
 // lists all nodes in the cluster with their status
-func handleClusterNodes(conn net.Conn, nodeState *server.NodeState) {
+func handleClusterNodes(conn net.Conn, nodeState *NodeState) {
 	// get config to access individual node information
 	config := nodeState.GetConfig()
 	if config == nil {
@@ -345,7 +344,7 @@ func notifyNodeAboutTopologyChange(nodeAddr string, operation string, targetNode
 	return err
 }
 
-func handleClusterHealth(conn net.Conn, nodeState *server.NodeState) {
+func handleClusterHealth(conn net.Conn, nodeState *NodeState) {
 	healthChecker := nodeState.GetHealthChecker()
 	if healthChecker == nil {
 		conn.Write([]byte(protocol.EncodeError("Health checker not initialized")))
