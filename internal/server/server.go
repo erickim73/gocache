@@ -34,6 +34,8 @@ func getMetricsCollector() *metrics.Collector {
 type Server struct {
 	cfg *config.Config
 	listener net.Listener
+	aof *persistence.AOF
+	leader *replication.Leader
 	cancel context.CancelFunc
 	wg sync.WaitGroup
 }
@@ -71,7 +73,7 @@ func (s *Server) Start() {
 	}
 
 	// create aof
-	aof, err := persistence.NewAOF(
+	s.aof, err = persistence.NewAOF(
 		cfg.AOFFileName,
 		cfg.SnapshotFileName,
 		cfg.GetSyncPolicy(),
@@ -82,10 +84,9 @@ func (s *Server) Start() {
 		slog.Error("Failed to create AOF", "error", err)
 		return
 	}
-	defer aof.Close()
 
 	// recovery
-	err = persistence.RecoverAOF(myCache, aof, cfg.AOFFileName, cfg.SnapshotFileName)
+	err = persistence.RecoverAOF(myCache, s.aof, cfg.AOFFileName, cfg.SnapshotFileName)
 	if err != nil {
 		slog.Error("Failed to recover from AOF", "error", err)
 		return
@@ -103,7 +104,8 @@ func (s *Server) Start() {
 	var leader *replication.Leader
 
 	if cfg.Role == "leader" {
-		leader, err = replication.NewLeader(myCache, aof, 0)
+		replPort := cfg.Port + 1000
+		s.leader, err = replication.NewLeader(myCache, s.aof, replPort)
 		if err != nil {
 			slog.Error("Failed to create leader", "error", err)
 			return
@@ -113,7 +115,7 @@ func (s *Server) Start() {
 	} else {
 		id := uuid.NewString()
 
-		follower, err := replication.NewFollower(myCache, aof, cfg.LeaderAddr, id, []config.NodeInfo{}, 0, 0, nodeState) 
+		follower, err := replication.NewFollower(myCache, s.aof, cfg.LeaderAddr, id, []config.NodeInfo{}, 0, 0, nodeState) 
 		if err != nil {
 			slog.Error("Failed to create follower", "error", err)
 		}
@@ -130,7 +132,6 @@ func (s *Server) Start() {
 	}
 
 	s.listener = listener
-	defer listener.Close()
 
 	slog.Info("Cache server listening", "address", address)
 
@@ -155,7 +156,7 @@ func (s *Server) Start() {
 		}
 
 		// handle connection in a separate goroutine
-		go handleConnection(conn, myCache, aof, nodeState, ps)
+		go handleConnection(conn, myCache, s.aof, nodeState, ps)
 	}
 }
 
@@ -164,9 +165,29 @@ func (s *Server) Stop() {
 	if s.cancel != nil {
 		s.cancel() // signal the accept loop that this is an intentional stop
 	}
+
+	// close leader's replication listener first
+	if s.leader != nil {
+		if err := s.leader.Close(); err != nil {
+			slog.Warn("Error closing leader listener", "error", err)
+		}
+	}
+
+	if s.listener != nil {
+		s.listener.Close()
+	}
+
 	if s.listener != nil {
 		s.listener.Close() // unblock any pending Accept() call
 	}
+
+	// close AOF before waiting for accept loop to finish
+	if s.aof != nil {
+		if err := s.aof.Close(); err != nil {
+			slog.Warn("Error closing AOF", "error", err)
+		}
+	}
+
 	s.wg.Wait() // don't return  until the accept loop has fully exited
 }
 
