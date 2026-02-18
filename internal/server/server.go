@@ -108,12 +108,15 @@ func (s *Server) Start() {
 
 	if cfg.Role == "leader" {
 		replPort := cfg.Port + 1000
+		if replPort > 65535 {
+			replPort = (cfg.Port % 1000) + 50000 // fold into safe range
+		}
 		s.leader, err = replication.NewLeader(myCache, s.aof, replPort)
 		if err != nil {
 			slog.Error("Failed to create leader", "error", err)
 			return
 		}
-		
+
 		nodeState.SetLeader(s.leader)
 		go s.leader.Start()
 		slog.Info("Started as leader")
