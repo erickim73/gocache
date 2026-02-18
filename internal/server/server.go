@@ -113,6 +113,8 @@ func (s *Server) Start() {
 			slog.Error("Failed to create leader", "error", err)
 			return
 		}
+		
+		nodeState.SetLeader(s.leader)
 		go s.leader.Start()
 		slog.Info("Started as leader")
 	} else {

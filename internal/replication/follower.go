@@ -128,7 +128,9 @@ func (f *Follower) Start() error {
 
 		// initialize heartbeat state
 		f.heartbeatMu.Lock()
-		f.lastHeartbeat = time.Now()
+		if f.lastHeartbeat.IsZero() {
+			f.lastHeartbeat = time.Now()
+		}
 		f.isLeaderAlive = true
 		f.heartbeatMu.Unlock()
 
