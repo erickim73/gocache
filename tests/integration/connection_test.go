@@ -15,19 +15,23 @@ func TestMultipleConcurrentClients(t *testing.T) {
 
 	const numClients = 10
 
+	// create all clients before spawning goroutines
+	clients := make([]*harness.Client, numClients)
+	for i := 0; i < numClients; i++ {
+		clients[i] = harness.NewClient(t, leader.Addr())
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(numClients)
 
 	// errCh collects failures from goroutines
-	errCh := make(chan error, numClients)
+	errCh := make(chan error, numClients * 3)
 
 	for i := 0; i < numClients; i++ {
 		clientID := i
+		client := clients[i]
 		go func() {
 			defer wg.Done()
-
-			// each goroutine creates its own connection
-			client := harness.NewClient(t, leader.Addr())
 
 			// verify basic connectivity
 			if got := client.Ping(); got != "PONG" {

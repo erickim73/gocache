@@ -154,7 +154,11 @@ func (s *Server) Start() {
 		}
 
 		// handle connection in a separate goroutine
-		go handleConnection(conn, myCache, s.aof, nodeState, ps)
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			handleConnection(conn, myCache, s.aof, nodeState, ps)
+		}()
 	}
 }
 
@@ -171,22 +175,20 @@ func (s *Server) Stop() {
 		}
 	}
 
+	// close listener to unblock Accept() call
 	if s.listener != nil {
 		s.listener.Close()
 	}
 
-	if s.listener != nil {
-		s.listener.Close() // unblock any pending Accept() call
-	}
+	// wait for all active connections to finish
+	s.wg.Wait()
 
-	// close AOF before waiting for accept loop to finish
+	// close AOF after all connections have finished
 	if s.aof != nil {
 		if err := s.aof.Close(); err != nil {
 			slog.Warn("Error closing AOF", "error", err)
 		}
 	}
-
-	s.wg.Wait() // don't return  until the accept loop has fully exited
 }
 
 func StartClusterMode(cfg *config.Config) {

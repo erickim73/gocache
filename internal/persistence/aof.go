@@ -127,11 +127,33 @@ func (aof *AOF) periodicSync() {
 }
 
 func (aof *AOF) Close() error {
-	close(aof.done)
+	select {
+	case <-aof.done:
+		// already closed 
+	default:
+		close(aof.done)
+	}
 
 	aof.wg.Wait()
 
-	return aof.file.Close()
+	// lock during final close to prevent any concurrent operations
+	aof.mu.Lock()
+	defer aof.mu.Unlock()
+
+	// explicitly sync all pending writes to disk before closing
+	if err := aof.file.Sync(); err != nil {
+		slog.Warn("Final sync failed", "error", err)
+	}
+
+	// close the file handle
+	err := aof.file.Close()
+	if err != nil {
+		return err
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	return nil
 }
 
 // reads aof file, parse each line into operation structs, return slice of operations
@@ -266,8 +288,12 @@ func (aof *AOF) rewriteAOF () error {
 	oldFile := aof.file
 
 	// close old file
-	oldFile.Close()
-	
+	err = oldFile.Close()
+	if err != nil {
+		slog.Error("Closing file failed", "error", err)
+		return fmt.Errorf("closing file failed: %v", err)
+	}
+
 	// rename temp file to original
 	err = os.Rename(tempName, aof.fileName)
 	if err != nil {
@@ -324,6 +350,18 @@ func (aof *AOF) checkRewriteTrigger() {
 		
 		aof.wg.Add(1)
 		go func() {
+			defer aof.wg.Done()
+
+			select {
+			case <-aof.done:
+				slog.Info("Skipping AOF rewrite due to shutdown")
+				aof.rewriteMu.Lock()
+				aof.rewriting = false
+				aof.rewriteMu.Unlock()
+				return
+			default:
+			}
+
 			err := aof.rewriteAOF()
 
 			aof.mu.Lock()
@@ -333,7 +371,6 @@ func (aof *AOF) checkRewriteTrigger() {
 			if err != nil {
 				slog.Error("AOF rewrite failed", "error", err)
 			}
-
 		}()
 	}
 }

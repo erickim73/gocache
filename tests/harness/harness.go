@@ -107,14 +107,13 @@ type TestHarness struct {
 	t     testing.TB // testing.TB covers both *testing.T and *testing.B
 	nodes []*NodeHandle
 	mu    sync.Mutex
+	stopOnce sync.Once
 }
 
 // creates a harness for the given test or benchmark. 
 func New(t testing.TB) *TestHarness {
 	t.Helper()
 	h := &TestHarness{t: t}
-	// t.Cleanup runs after the test AND all subtests complete — more correct than defer inside the test body, which runs before subtests finish.
-	t.Cleanup(h.stopAll)
 	return h
 }
 
@@ -174,6 +173,8 @@ func (h *TestHarness) startNode(cfg NodeConfig) *NodeHandle {
 	serverCfg.AOFFileName = h.t.TempDir() + "/test.aof"
 	serverCfg.SnapshotFileName = h.t.TempDir() + "/test.snap"
 
+	h.t.Cleanup(h.stopAll)
+
 	srv := server.New(serverCfg)
 
 	doneCh := make(chan struct{}, 1)
@@ -213,14 +214,16 @@ func (h *TestHarness) startNode(cfg NodeConfig) *NodeHandle {
 
 // stopAll shuts down all nodes in reverse start order (followers before leader).
 func (h *TestHarness) stopAll() {
-	h.mu.Lock()
-	nodes := make([]*NodeHandle, len(h.nodes))
-	copy(nodes, h.nodes)
-	h.mu.Unlock()
+	h.stopOnce.Do(func() {
+		h.mu.Lock()
+		nodes := make([]*NodeHandle, len(h.nodes))
+		copy(nodes, h.nodes)
+		h.mu.Unlock()
 
-	for i := len(nodes) - 1; i >= 0; i-- {
-		nodes[i].Stop()
-	}
+		for i := len(nodes) - 1; i >= 0; i-- {
+			nodes[i].Stop()
+		}
+	})
 }
 
 // waitForReady dials addr repeatedly until a TCP connection succeeds or timeout is reached. 
