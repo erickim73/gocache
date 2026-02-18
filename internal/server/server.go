@@ -101,8 +101,6 @@ func (s *Server) Start() {
 		slog.Error("Failed to create node state", "error", err)
 	}
 
-	var leader *replication.Leader
-
 	if cfg.Role == "leader" {
 		replPort := cfg.Port + 1000
 		s.leader, err = replication.NewLeader(myCache, s.aof, replPort)
@@ -110,7 +108,7 @@ func (s *Server) Start() {
 			slog.Error("Failed to create leader", "error", err)
 			return
 		}
-		go leader.Start()
+		go s.leader.Start()
 		slog.Info("Started as leader")
 	} else {
 		id := uuid.NewString()
