@@ -505,52 +505,40 @@ func (f *Follower) monitorLeaderHealth(conn net.Conn) {
 func (f *Follower) startElection() {
 	slog.Info("Starting election", "follower_id", f.id, "priority", f.myPriority)
 
-	// don't have cluster info, can't elect
+	// self promote if not in cluster config
 	if len(f.clusterNodes) == 0 || f.myPriority == 0 {
 		slog.Info("No cluster config/priority, skipping election", "follower_id", f.id)
 		return
-	}
-
-	// find maxPriority
-	maxPriority := 0
-	for _, n := range f.clusterNodes {
-		if n.Priority > maxPriority {
-			maxPriority = n.Priority
+	} else {
+		// priority-based election: higher priority = shorter wait
+		maxPriority := 0
+		for _, n := range f.clusterNodes {
+			if n.Priority > maxPriority {
+				maxPriority = n.Priority
+			}
 		}
+
+		waitSteps := maxPriority - f.myPriority
+		if waitSteps < 0 {
+			waitSteps = 0
+		}
+
+		waitTime := time.Duration(waitSteps) * time.Second
+        slog.Info("Waiting before attempting leadership", "follower_id", f.id, "wait_time", waitTime)
+		time.Sleep(waitTime)
+
+		newLeaderAddr := f.findNewLeader()
+        if newLeaderAddr != "" {
+            slog.Info("Detected existing leader, aborting election", "follower_id", f.id)
+            f.mu.Lock()
+            f.leaderAddr = newLeaderAddr
+            f.mu.Unlock()
+            return
+        }
 	}
 
-	// compute wait time
-	delayPerPriority := 1 * time.Second
-	waitSteps := maxPriority - f.myPriority
-	if waitSteps < 0 {
-		waitSteps = 0
-	}
-
-	waitTime := time.Duration(waitSteps) * delayPerPriority
-
-	slog.Info("Waiting before attempting leadership", "follower_id", f.id, "wait_time", waitTime)
-	time.Sleep(waitTime)
-
-	
-	// after waiting, check if someone else already became leader
-	newLeaderAddr := f.findNewLeader() // returns address of new leader
-	if newLeaderAddr != "" {
-		slog.Info("Detected existing leader, aborting election", "follower_id", f.id)
-
-		// update leader address to point to new leader
-		f.mu.Lock()
-		f.leaderAddr = newLeaderAddr
-		f.mu.Unlock()
-
-		slog.Info("Updated leader address", "follower_id", f.id, "new_leader_addr", newLeaderAddr)
-		return
-	}
-	
-
-	// win election: promote
+	// promote self to leader
 	slog.Info("Promoting self to leader", "follower_id", f.id)
-
-	// close follower conn
 	f.closeConn()
 
 	// create leader with existing aof
