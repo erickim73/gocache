@@ -36,6 +36,7 @@ type Server struct {
 	listener net.Listener
 	aof *persistence.AOF
 	leader *replication.Leader
+	follower *replication.Follower
 	cancel context.CancelFunc
 	wg sync.WaitGroup
 	connMu sync.Mutex
@@ -127,6 +128,7 @@ func (s *Server) Start() {
 		if err != nil {
 			slog.Error("Failed to create follower", "error", err)
 		}
+		s.follower = follower
 		go follower.Start()
 		slog.Info("Started as follower", "leader_address", cfg.LeaderAddr)
 	}	
@@ -187,6 +189,10 @@ func (s *Server) Start() {
 
 // signals Start() to exit and waits until it has
 func (s *Server) Stop() {
+	if s.follower != nil {
+		s.follower.Stop()
+	}
+	
 	if s.cancel != nil {
 		s.cancel() // signal the accept loop that this is an intentional stop
 	}

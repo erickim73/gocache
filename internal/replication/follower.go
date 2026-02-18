@@ -37,6 +37,8 @@ type Follower struct {
 	promotedMu sync.RWMutex // protects promoted flag
 
 	nodeStateUpdater NodeStateUpdater  
+
+	stopCh chan struct{} // Server.Stop() can signal the follower loop to exit
 }
 
 // interface for updating node state after promotion
@@ -69,6 +71,7 @@ func NewFollower(cache *cache.Cache, aof *persistence.AOF, leaderAddr string, id
 		myPriority:   myPriority,
 		myReplPort:   myReplPort,
 		nodeStateUpdater: nodeStateUpdater,
+		stopCh: make(chan struct{}),
 	}
 
 	return follower, nil
@@ -81,6 +84,14 @@ func (f *Follower) Start() error {
 	maxAttemptsBeforeElection := 7 // after 7 fails, trigger election
 
 	for {
+		// check stopCh so Server.Stop() can terminate this loop cleanly
+		select {
+		case <-f.stopCh:
+			slog.Info("Follower stopping (shutdown signal received)", "follower_id", f.id)
+			return nil
+		default:
+		}
+
 		// check if follower has been promoted
 		f.promotedMu.RLock()
 		if f.promoted {
@@ -146,6 +157,17 @@ func (f *Follower) Start() error {
 			continue
 		}
 	}
+}
+
+// signals the follower's Start() loop to exit cleanly
+func (f *Follower) Stop() {
+	select {
+	case <- f.stopCh:
+		// already closed
+	default:
+		close(f.stopCh)
+	}
+	f.closeConn() // unblock any blocking read in processReplicationStream
 }
 
 func (f *Follower) connectToLeader() error {
@@ -508,7 +530,6 @@ func (f *Follower) startElection() {
 	// self promote if not in cluster config
 	if len(f.clusterNodes) == 0 || f.myPriority == 0 {
 		slog.Info("No cluster config/priority, skipping election", "follower_id", f.id)
-		return
 	} else {
 		// priority-based election: higher priority = shorter wait
 		maxPriority := 0
@@ -541,10 +562,27 @@ func (f *Follower) startElection() {
 	slog.Info("Promoting self to leader", "follower_id", f.id)
 	f.closeConn()
 
+	// when myReplPort is 0 (simple mode), ask OS for a free port instead of using hardcoded default
+	replPort := f.myReplPort
+	if replPort == 0 {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			slog.Error("Cannot find free port for promotion", "follower_id", f.id, "error", err)
+			return
+		}
+		replPort = ln.Addr().(*net.TCPAddr).Port
+		ln.Close()
+		slog.Info("Assigned dynamic replication port for promotion", "follower_id", f.id, "port", replPort)
+	}
+
 	// create leader with existing aof
 	leader, err := NewLeader(f.cache, f.aof, f.myReplPort)
 	if err != nil {
 		slog.Error("Error creating leader", "error", err)
+		
+		f.promotedMu.Lock()
+		f.promoted = true
+		f.promotedMu.Unlock()
 		return
 	}
 
