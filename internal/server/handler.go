@@ -230,7 +230,7 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 		case "SET":
 			// handleSet(conn, resultSlice, cache, aof, leader)
 			leader := nodeState.GetLeader()
-			handleSet(conn, resultSlice, cache, aof, leader)
+			handleSet(conn, resultSlice, cache, aof, leader, nodeState)
 			// record latency after set completes
 			duration := time.Since(startTime)
 			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
@@ -244,7 +244,7 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 		case "DEL":
 			// handleDelete(conn, resultSlice, cache, aof, leader)
 			leader := nodeState.GetLeader()
-			handleDelete(conn, resultSlice, cache, aof, leader)
+			handleDelete(conn, resultSlice, cache, aof, leader, nodeState)
 			// record latency after delete completes
 			duration := time.Since(startTime)
 			cache.GetMetrics().RecordOperationDuration(duration.Seconds())
@@ -791,8 +791,14 @@ func handlePublish(conn net.Conn, resultSlice []interface{}, ps *pubsub.PubSub) 
 }
 
 // process set commands
-func handleSet(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader) {
-	if len(resultSlice) < 3 || len(resultSlice) > 4 {
+func handleSet(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader, nodeState *NodeState) {
+	// reject writes on follower nodes
+	if nodeState.GetRole() == "follower" {
+		conn.Write([]byte(protocol.EncodeError("ERR READONLY You can't write against a read only replica")))
+		return
+	}
+	
+	if len(resultSlice) < 3 || len(resultSlice) > 5 {
 		conn.Write([]byte(protocol.EncodeError("Length of command doesn't match")))
 		return
 	}
@@ -875,7 +881,13 @@ func handleGet(conn net.Conn, resultSlice []interface{}, cache *cache.Cache) {
 	}
 }
 
-func handleDelete(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader) {
+func handleDelete(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader, nodeState *NodeState) {
+	// reject writes on follower nodes
+	if nodeState.GetRole() == "follower" {
+		conn.Write([]byte(protocol.EncodeError("ERR READONLY You can't write against a read only replica")))
+		return
+	}
+	
 	if len(resultSlice) != 2 {
 		conn.Write([]byte(protocol.EncodeError("Length of command doesn't match")))
 		return
