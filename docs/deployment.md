@@ -84,8 +84,6 @@ ports:
 ```
 Starts in leader role on port 7000. Exposes metrics on 9090. The healthcheck polls `GET /health` every 5 seconds — followers will not start until this passes, enforced by `depends_on: condition: service_healthy`.
 
-> **Note:** The leader needs `--repl-port 8000` added to its command so followers can connect to it on that port. The current compose file omits this flag — the leader will fall back to the default replication port (0), which means follower connections to `leader:8000` will fail. Add `"--repl-port", "8000"` to the leader's command array to fix this.
-
 **`follower1`**
 ```yaml
 command: ["gocache", "--role", "follower", "--port", "7001",
