@@ -538,7 +538,7 @@ func (f *Follower) startElection() {
 		}
 
 		// each priority step below max adds 1 second of wait
-		waitTime := time.Duration(maxPriority - f.myPriority) * time.Second
+		waitTime := time.Duration(maxPriority-f.myPriority+1) * 500 * time.Millisecond
 		if waitTime > 0 {
 			slog.Info("Waiting before attempting leadership", "follower_id", f.id, "wait_time", waitTime)
 			time.Sleep(waitTime)
