@@ -122,6 +122,58 @@ def _read_line(data: bytes, pos: int) -> tuple[str, int]:
     return line, end + 2
 
 
+class GoCacheClient:
+    """
+    A client for GoCache server
+    
+    Usage:
+        # Direct instantiation
+        client = GoCacheClient("localhost", 6379)
+        client.set("key", "value")
+        client.close()
+
+        # Preferred — context manager closes the socket automatically
+        with GoCacheClient("localhost", 6379) as client:
+            client.set("key", "value")
+            print(client.get("key"))
+    """
+    def __init__(self, host: str = "localhost", port: int = 7000) -> None:
+        # store connection parameters so close() and reconnect logic know where to re-establish socket
+        self.host = host
+        self.port = port
+
+        # create tcp socket and connect
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        
+        # wrap connect() so a refused connection surfaces a GoCacheConnectionError
+        try:
+            self._sock.connect((host, port))
+        except ConnectionRefusedError:
+            raise GoCacheConnectionError(
+                f"Could not connection to GoCache at {host}:{port}. "
+                "Is the server running?"
+            )
+            
+        # a bytearray buffer that accumulates raw bytes from the socket
+        self._buffer = bytearray()
+    
+    def close(self) -> None:
+        """Close the TCP connection and release the socket"""
+        self._sock.close()
+        
+    def __enter__(self):
+        """Called when entering a 'with' block"""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        """
+        Called when leaving a 'with' block, whether normally or via an exception
+        """
+        self.close()
+        return False
+    
+    
+
 # tests
 
 if __name__ == "__main__":
