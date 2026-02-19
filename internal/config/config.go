@@ -52,6 +52,9 @@ type Config struct {
 	// replication settings
 	Role string // leader or follower
 	LeaderAddr string
+	Priority int
+	ReplPort int
+	PeerReplAddrs string 
 
 	// persistence settings
 	AOFFileName      string
@@ -154,6 +157,9 @@ func ParseFlags(cfg *Config) string {
 	// replication flags
 	flag.StringVar(&cfg.Role, "role", cfg.Role, "Role: leader or follower")
 	flag.StringVar(&cfg.LeaderAddr, "leader-addr", cfg.LeaderAddr, "Leader address (host: port)")
+	flag.IntVar(&cfg.Priority, "priority", cfg.Priority, "Election priority (higher = preferred leader)")
+	flag.IntVar(&cfg.ReplPort, "repl_port", cfg.ReplPort, "Replication port override")
+	flag.StringVar(&cfg.PeerReplAddrs, "peer-repl-addrs", cfg.PeerReplAddrs, "Comma-separated peer replication addresses to check before self-promoting")
 
 	flag.StringVar(&cfg.NodeID, "node-id", cfg.NodeID, "Node ID for cluster mode")
 
@@ -187,6 +193,12 @@ func ApplyFlags(cfg *Config) {
 			cfg.Role = f.Value.String()
 		case "leader-addr":
 			cfg.LeaderAddr = f.Value.String()
+		case "priority":
+			fmt.Sscanf(f.Value.String(), "%d", &cfg.Priority)
+		case "repl-port":
+			fmt.Sscanf(f.Value.String(), "%d", &cfg.ReplPort)
+		case "peer-repl-addrs":
+			cfg.PeerReplAddrs = f.Value.String()
 		case "node-id":
 			cfg.NodeID = f.Value.String()
 		case "aof-file":
