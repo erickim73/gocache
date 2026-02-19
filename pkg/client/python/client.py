@@ -1,5 +1,15 @@
 import socket
 
+# custom exception hierarchy
+class GoCacheError(Exception):
+    """Base class for all GoCache client errors"""
+
+class GoCacheConnectionError(GoCacheError):
+    """Raised when the client cannot connect to or communicate with the server"""
+
+class GoCacheCommandError(GoCacheError):
+    """Raised when the server returns a RESP '-' error response."""
+
 def raw_ping(host: str = "localhost", port: int = 7000) -> None:
     """
     opens a TCP socket, sends a RESP-encoded PING, and prints the raw bytes
