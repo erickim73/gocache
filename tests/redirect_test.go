@@ -475,6 +475,7 @@ func startTestFollower(t *testing.T, port int, leaderAddr string) *TestServer {
 	}
 
 	// create follower
+	var peerReplAddrs []string
 	follower, err := replication.NewFollower(
 		myCache,
 		aof,
@@ -483,6 +484,7 @@ func startTestFollower(t *testing.T, port int, leaderAddr string) *TestServer {
 		nil,              // clusterNodes
 		1,                // priority
 		port+1000,        // replication port
+		peerReplAddrs,
 		nodeState,
 	)
 	if err != nil {
