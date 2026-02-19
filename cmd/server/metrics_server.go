@@ -20,7 +20,7 @@ func StartMetricsServer(port int) {
 	// returns an http handler that 1. collects all metrics from prometheus registry, formats them in prometheus text exposition format, serves them over http
 	mux.Handle("/metrics", promhttp.Handler())
 
-	// add health check endpoint fro metrics server
+	// add health check endpoint for metrics server
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))

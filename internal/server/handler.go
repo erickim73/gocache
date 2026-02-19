@@ -306,7 +306,7 @@ func queueCommandForTransaction(conn net.Conn, state *ConnectionState, resultSli
 	var validationErr error
 	switch command {
 	case "SET":
-		if len(resultSlice) < 3 || len(resultSlice) > 4 {
+		if len(resultSlice) < 3 || len(resultSlice) > 5 {
 			validationErr = fmt.Errorf("wrong number of arguments for 'set' command")
 		}
 		case "GET":
@@ -444,7 +444,13 @@ func handleExec(conn net.Conn, state *ConnectionState, cache *cache.Cache, aof *
 			
 			ttlSeconds := int64(0)
 			
-			if len(cmdSlice) == 4 {
+			if len(cmdSlice) == 5 {
+				ttlStr := cmdSlice[4].(string)
+				ttlSec, err := strconv.Atoi(ttlStr)
+				if err == nil {
+					ttlSeconds = int64(ttlSec)
+				}
+			} else if len(cmdSlice) == 4 {
 				// Parse TTL from the command
 				ttlStr := cmdSlice[3].(string)
 				ttlSec, err := strconv.Atoi(ttlStr)
@@ -544,7 +550,7 @@ func handleDiscard(conn net.Conn, state *ConnectionState) {
 // execute set command and return RESP formatted response
 func executeSetCommand(resultSlice []interface{}, cache *cache.Cache, aof *persistence.AOF, leader *replication.Leader) string {
 	// validate arguments
-	if len(resultSlice) < 3 || len(resultSlice) > 4 {
+	if len(resultSlice) < 3 || len(resultSlice) > 5 {
 		return protocol.EncodeError("ERR wrong number of arguments for 'set' command")
 	}
 
@@ -560,7 +566,17 @@ func executeSetCommand(resultSlice []interface{}, cache *cache.Cache, aof *persi
 	ttl := time.Duration(0)
 
 	// parse ttl if found
-	if len(resultSlice) == 4 {
+	if len(resultSlice) == 5 {
+		qualifier := strings.ToUpper(resultSlice[3].(string))
+		if qualifier != "EX" {
+			return protocol.EncodeError("ERR syntax error")
+		}
+		ttlSec, err := strconv.Atoi(resultSlice[4].(string))
+		if err != nil {
+			return protocol.EncodeError("ERR value is not an integer or out of range")
+		}
+		ttl = time.Duration(ttlSec) * time.Second
+	} else if len(resultSlice) == 4 {
 		slog.Info("Parsing TTL",
             "ttl_arg", resultSlice[3],
             "ttl_type", fmt.Sprintf("%T", resultSlice[3]),
