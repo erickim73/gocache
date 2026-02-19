@@ -16,7 +16,7 @@ services:
 
   follower1:
     build: .
-    command: ["gocache", "--role", "follower", "--port", "7001", "--leader-addr", "leader:8000"]
+    command: ["gocache", "--role", "follower", "--port", "7001", "--leader-addr", "leader:8000", "--priority", "2", "--repl-port", "8001"]
     ports:
       - "7001:7001"
     volumes:
@@ -27,7 +27,7 @@ services:
 
   follower2:
     build: .
-    command: ["gocache", "--role", "follower", "--port", "7002", "--leader-addr", "leader:8000"]
+    command: ["gocache", "--role", "follower", "--port", "7002", "--leader-addr", "leader:8000", "--priority", "1", "--repl-port", "8002", "--peer-repl-addrs", "follower1:8001"]
     ports:
       - "7002:7002"
     volumes:

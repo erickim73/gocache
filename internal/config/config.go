@@ -158,7 +158,7 @@ func ParseFlags(cfg *Config) string {
 	flag.StringVar(&cfg.Role, "role", cfg.Role, "Role: leader or follower")
 	flag.StringVar(&cfg.LeaderAddr, "leader-addr", cfg.LeaderAddr, "Leader address (host: port)")
 	flag.IntVar(&cfg.Priority, "priority", cfg.Priority, "Election priority (higher = preferred leader)")
-	flag.IntVar(&cfg.ReplPort, "repl_port", cfg.ReplPort, "Replication port override")
+	flag.IntVar(&cfg.ReplPort, "repl-port", cfg.ReplPort, "Replication port override")
 	flag.StringVar(&cfg.PeerReplAddrs, "peer-repl-addrs", cfg.PeerReplAddrs, "Comma-separated peer replication addresses to check before self-promoting")
 
 	flag.StringVar(&cfg.NodeID, "node-id", cfg.NodeID, "Node ID for cluster mode")
