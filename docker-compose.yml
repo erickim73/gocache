@@ -1,7 +1,7 @@
 services:
   leader:
     build: . 
-    command: ["gocache", "--role", "leader", "--port", "7000"]
+    command: ["gocache", "--role", "leader", "--port", "7000", "--repl-port", "8000"]
     ports:
       - "7000:7000"
       - "9090:9090"
