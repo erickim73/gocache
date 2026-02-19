@@ -5,6 +5,8 @@ services:
     ports:
       - "7000:7000"
       - "9090:9090"
+    volumes:
+      - leader-data:/data
 
   follower1:
     build: .
@@ -13,6 +15,8 @@ services:
       - "7001:7001"
     depends_on:
       - leader
+    volumes:
+      - follower1-data:/data
       
 
   follower2:
@@ -22,3 +26,10 @@ services:
       - "7002:7002"
     depends_on:
       - leader
+    volumes:
+      - follower2-data:/data
+
+volumes:
+  leader-data:
+  follower1-data:
+  follower2-data:
