@@ -1,0 +1,24 @@
+services:
+  leader:
+    build: . 
+    command: ["gocache", "--role", "leader", "--port", "7000"]
+    ports:
+      - "7000:7000"
+      - "9090:9090"
+
+  follower1:
+    build: .
+    command: ["gocache", "--role", "follower", "--port", "7001", "--leader-addr", "leader:8000"]
+    ports:
+      - "7001:7001"
+    depends_on:
+      - leader
+      
+
+  follower2:
+    build: .
+    command: ["gocache", "--role", "follower", "--port", "7002", "--leader-addr", "leader:8000"]
+    ports:
+      - "7002:7002"
+    depends_on:
+      - leader
