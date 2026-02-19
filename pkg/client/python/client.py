@@ -110,3 +110,61 @@ def _read_line(data: bytes, pos: int) -> tuple[str, int]:
     end = data.index(b"\r\n", pos)
     line = data[pos:end].decode()
     return line, end + 2
+
+
+# tests
+
+if __name__ == "__main__":
+    print("=== Encoder Tests ===")
+    
+    result = encode_command("PING")
+    expected = b"*1\r\n$4\r\nPING\r\n"
+    print(f"PING:           {result}")
+    print(f"Correct: {result == expected}\n")
+    
+    result = encode_command("SET", "key", "value")
+    expected = b"*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nvalue\r\n"
+    print(f"SET key value:  {result}")
+    print(f"Correct: {result == expected}\n")
+    
+    result = encode_command("GET", "key")
+    expected = b"*2\r\n$3\r\nGET\r\n$3\r\nkey\r\n"
+    print(f"GET key:        {result}")
+    print(f"Correct: {result == expected}\n")
+    
+    print("=== Parser Tests ===")
+
+    # simple string
+    val = parse_response(b"+PONG\r\n")
+    print(f"+PONG\r\n        → {val!r}  (expected 'PONG', correct: {val == 'PONG'})")
+
+    # error
+    val = parse_response(b"-ERR unknown command\r\n")
+    print(f"-ERR ...        → {val!r}  (expected Exception, correct: {isinstance(val, Exception)})")
+
+    # integer
+    val = parse_response(b":42\r\n")
+    print(f":42\r\n          → {val!r}  (expected 42, correct: {val == 42})")
+
+    # bulk string
+    val = parse_response(b"$5\r\nhello\r\n")
+    print(f"$5\r\nhello\r\n   → {val!r}  (expected 'hello', correct: {val == 'hello'})")
+
+    # null bulk string (missing key)
+    val = parse_response(b"$-1\r\n")
+    print(f"$-1\r\n          → {val!r}  (expected None, correct: {val is None})")
+
+    # array
+    val = parse_response(b"*3\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$3\r\nbaz\r\n")
+    print(f"*3 array        → {val!r}  (expected ['foo','bar','baz'], correct: {val == ['foo','bar','baz']})")
+
+    # null array
+    val = parse_response(b"*-1\r\n")
+    print(f"*-1\r\n          → {val!r}  (expected None, correct: {val is None})")
+
+    # raw PING (requires live GoCache server) ---
+    print("\n=== Raw PING (requires running GoCache server) ===")
+    try:
+        raw_ping()
+    except ConnectionRefusedError:
+        print("Server not running — skipping live test.")
