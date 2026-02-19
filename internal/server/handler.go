@@ -637,7 +637,7 @@ func executeDeleteCommand(resultSlice []interface{}, cache *cache.Cache, aof *pe
 	// delete from cache
 	cache.DeleteInternal(key)
 
-	return protocol.EncodeSimpleString("OK")
+	return ":1\r\n"
 }
 
 // execute DBSIZE command and return RESP formatted response
@@ -934,7 +934,7 @@ func handleDelete(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, 
 		)
 	}
 
-	conn.Write([]byte(protocol.EncodeSimpleString("OK")))
+	conn.Write([]byte(":1\r\n"))
 }
 
 // returns the number of keys in the cache
