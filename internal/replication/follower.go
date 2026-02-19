@@ -32,6 +32,7 @@ type Follower struct {
 	clusterNodes []config.NodeInfo // all nodes in cluster (empty if not in cluster mode)
 	myPriority   int               // my priority (0 if not in cluster mode)
 	myReplPort   int               // replication port for when node becomes leader
+	peerReplAddrs []string // peer replication addresses to check before self-promoting
 
 	promoted   bool         // set to true when promoted to leader
 	promotedMu sync.RWMutex // protects promoted flag
@@ -47,7 +48,7 @@ type NodeStateUpdater interface {
 	SetLeader(leader *Leader)
 }
 
-func NewFollower(cache *cache.Cache, aof *persistence.AOF, leaderAddr string, id string, clusterNodes []config.NodeInfo, myPriority int, myReplPort int, nodeStateUpdater NodeStateUpdater) (*Follower, error) {
+func NewFollower(cache *cache.Cache, aof *persistence.AOF, leaderAddr string, id string, clusterNodes []config.NodeInfo, myPriority int, myReplPort int, peerReplAddrs []string, nodeStateUpdater NodeStateUpdater) (*Follower, error) {
 	if cache == nil {
 		slog.Error("Cache instance cannot be nil")
 		return nil, fmt.Errorf("cache instance cannot be nil")
@@ -70,6 +71,7 @@ func NewFollower(cache *cache.Cache, aof *persistence.AOF, leaderAddr string, id
 		clusterNodes: clusterNodes,
 		myPriority:   myPriority,
 		myReplPort:   myReplPort,
+		peerReplAddrs: peerReplAddrs,
 		nodeStateUpdater: nodeStateUpdater,
 		stopCh: make(chan struct{}),
 	}
@@ -527,35 +529,44 @@ func (f *Follower) monitorLeaderHealth(conn net.Conn) {
 func (f *Follower) startElection() {
 	slog.Info("Starting election", "follower_id", f.id, "priority", f.myPriority)
 
-	// self promote if not in cluster config
-	if len(f.clusterNodes) == 0 || f.myPriority == 0 {
-		slog.Info("No cluster config/priority, skipping election", "follower_id", f.id)
-	} else {
-		// priority-based election: higher priority = shorter wait
-		maxPriority := 0
+	if f.myPriority > 0 {
+		maxPriority := f.myPriority
 		for _, n := range f.clusterNodes {
 			if n.Priority > maxPriority {
 				maxPriority = n.Priority
 			}
 		}
 
-		waitSteps := maxPriority - f.myPriority
-		if waitSteps < 0 {
-			waitSteps = 0
+		// each priority step below max adds 1 second of wait
+		waitTime := time.Duration(maxPriority-f.myPriority+1) * 500 * time.Millisecond
+		if waitTime > 0 {
+			slog.Info("Waiting before attempting leadership", "follower_id", f.id, "wait_time", waitTime)
+			time.Sleep(waitTime)
 		}
 
-		waitTime := time.Duration(waitSteps) * time.Second
-        slog.Info("Waiting before attempting leadership", "follower_id", f.id, "wait_time", waitTime)
-		time.Sleep(waitTime)
+		// check cluster peers first (cluster mode)
+		if len(f.clusterNodes) > 0 {
+			if addr := f.findNewLeader(); addr != "" {
+				slog.Info("Detected existing leader via cluster config, aborting election", "follower_id", f.id)
+				f.mu.Lock()
+				f.leaderAddr = addr
+				f.mu.Unlock()
+				return
+			}
+		}
 
-		newLeaderAddr := f.findNewLeader()
-        if newLeaderAddr != "" {
-            slog.Info("Detected existing leader, aborting election", "follower_id", f.id)
-            f.mu.Lock()
-            f.leaderAddr = newLeaderAddr
-            f.mu.Unlock()
-            return
-        }
+		// check simple-mode peer replication addresses
+		if addr := f.findPeerLeader(); addr != "" {
+			slog.Info("Detected existing leader via peer addrs, connecting as follower", "follower_id", f.id, "new_leader", addr)
+			f.mu.Lock()
+			f.leaderAddr = addr
+			f.mu.Unlock()
+			return
+		}
+	} else {
+		// no priority set. skip election entirely to avoid split brain
+        slog.Info("No priority configured, skipping election to avoid split-brain", "follower_id", f.id)
+		return
 	}
 
 	// promote self to leader
@@ -638,5 +649,23 @@ func (f *Follower) findNewLeader() string {
 	}
 	
 	// no leader found
+	return ""
+}
+
+// checks simple-mode peer replication addresses
+func (f *Follower) findPeerLeader() string {
+	timeout := 300 * time.Millisecond
+	for _, addr := range f.peerReplAddrs {
+		if addr == "" {
+			continue
+		}
+		conn, err := net.DialTimeout("tcp", addr, timeout)
+		if err != nil {
+			continue
+		}
+		conn.Close()
+		slog.Info("Found peer already listening as leader", "follower_id", f.id, "addr", addr)
+		return addr
+	}
 	return ""
 }
