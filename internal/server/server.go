@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -145,7 +146,15 @@ func (s *Server) Start() {
 	} else {
 		id := uuid.NewString()
 
-		follower, err := replication.NewFollower(myCache, s.aof, cfg.LeaderAddr, id, []config.NodeInfo{}, 0, 0, nodeState) 
+		replPort := cfg.ReplPort
+		if replPort == 0 {
+			replPort = cfg.Port + 1000
+		}
+		var peerReplAddrs []string
+		if cfg.PeerReplAddrs != "" {
+			peerReplAddrs = strings.Split(cfg.PeerReplAddrs, ",")
+		}
+		follower, err := replication.NewFollower(myCache, s.aof, cfg.LeaderAddr, id, []config.NodeInfo{}, cfg.Priority, replPort, peerReplAddrs, nodeState)
 		if err != nil {
 			slog.Error("Failed to create follower", "error", err)
 		}
@@ -620,7 +629,15 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	nodeState.SetLeaderAddr(leaderClientAddr)
 	
 	// create follower
-	follower, err := replication.NewFollower(myCache, aof, shardLeaderReplAddr, myNode.ID, clusterNodes, myNode.Priority, myNode.ReplPort, nodeState) 
+	replPort := cfg.ReplPort
+	if replPort == 0 {
+		replPort = cfg.Port + 1000
+	}
+	var peerReplAddrs []string
+	if cfg.PeerReplAddrs != "" {
+		peerReplAddrs = strings.Split(cfg.PeerReplAddrs, ",")
+	}
+	follower, err := replication.NewFollower(myCache, aof, shardLeaderReplAddr, myNode.ID, clusterNodes, myNode.Priority, myNode.ReplPort, peerReplAddrs, nodeState) 
 	if err != nil {
 		slog.Error("Error creating follower", "error", err)
 		return
