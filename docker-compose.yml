@@ -7,27 +7,34 @@ services:
       - "9090:9090"
     volumes:
       - leader-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   follower1:
     build: .
     command: ["gocache", "--role", "follower", "--port", "7001", "--leader-addr", "leader:8000"]
     ports:
       - "7001:7001"
-    depends_on:
-      - leader
     volumes:
       - follower1-data:/data
-      
+    depends_on:
+      leader:
+        condition: service_healthy
 
   follower2:
     build: .
     command: ["gocache", "--role", "follower", "--port", "7002", "--leader-addr", "leader:8000"]
     ports:
       - "7002:7002"
-    depends_on:
-      - leader
     volumes:
       - follower2-data:/data
+    depends_on:
+      leader:
+        condition: service_healthy
 
 volumes:
   leader-data:
