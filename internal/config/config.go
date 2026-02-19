@@ -25,6 +25,7 @@ type yamlConfig struct {
 	MaxCacheSize            int         `yaml:"max_cache_size"`
 	Role 					string      `yaml:"role"`
 	LeaderAddr 				string      `yaml:"leader_addr"`
+	ReplPort 				int 		`yaml:"repl_port"`
 	AOFFileName             string      `yaml:"aof_file"`
 	SnapshotFileName        string      `yaml:"snapshot_file"`
 	SyncPolicy              string      `yaml:"sync_policy"`
@@ -37,7 +38,6 @@ type yamlConfig struct {
 	Shards 					[]ShardInfo `yaml:"shards"`
 	LogLevel 				string 		`yaml:"log_level"` // debug, info, warn, error
 }
-
 
 type Config struct {
 	// server settings
@@ -118,6 +118,7 @@ func LoadFromFile(fileName string) (*Config, error) {
 		MaxCacheSize:     yc.MaxCacheSize,
 		Role: 			  yc.Role,
 		LeaderAddr: 	  yc.LeaderAddr,
+		ReplPort: 	      yc.ReplPort,
 		AOFFileName:      yc.AOFFileName,
 		SnapshotFileName: yc.SnapshotFileName,
 		SyncPolicy:       yc.SyncPolicy,
