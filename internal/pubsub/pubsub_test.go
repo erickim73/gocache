@@ -82,6 +82,13 @@ func (m *mockConn) Close() error {
 	return nil
 }
 
+// safe accessor so test goroutine doesn't race with Write()
+func (m *mockConn) writtenLen() int {
+    m.mu.Lock()
+    defer m.mu.Unlock()
+    return len(m.written)
+}
+
 // creates a new mock connection with a unique ID
 func newMockConn(id string) *mockConn {
 	return &mockConn{
@@ -259,7 +266,7 @@ func TestPublish_SingleSubscriber(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Verify the message was written to the connection
-	if len(conn.written) == 0 {
+	if conn.writtenLen() == 0 {
 		t.Error("expected message to be written to connection")
 	}
 }
@@ -296,7 +303,7 @@ func TestPublish_MultipleSubscribers(t *testing.T) {
 
 	// verify all connections received the message
 	for _, conn := range connections {
-		if len(conn.written) == 0 {
+		if conn.writtenLen() == 0 {
 			t.Errorf("connection %s did not receive message", conn.id)
 		}
 	}
