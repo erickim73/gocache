@@ -6,3 +6,9 @@ server.exe
 cache.aof
 cache.rdb
 pkg/client/python/__pycache__
+pkg/client/python/gocache/__pycache__
+pkg/client/python/.venv
+dist/
+*.whl
+*.tar.gz
+*.egg-info/
