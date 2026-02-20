@@ -122,8 +122,11 @@ func TestHealthChecker_FailureDetection(t *testing.T) {
 
 // TestHealthChecker_RecoveryDetection tests that recovered node is marked alive
 func TestHealthChecker_RecoveryDetection(t *testing.T) {
+	var listenerMu sync.Mutex
 	// Start a server that we can stop and restart
+	listenerMu.Lock()
 	listener, err := net.Listen("tcp", "localhost:0")
+	listenerMu.Unlock()
 	if err != nil {
 		t.Fatalf("Failed to start test server: %v", err)
 	}
@@ -134,7 +137,10 @@ func TestHealthChecker_RecoveryDetection(t *testing.T) {
 	serverRunning.Store(true)
 	go func() {
 		for serverRunning.Load() {
-			conn, err := listener.Accept()
+			listenerMu.Lock()
+			l := listener
+			listenerMu.Unlock()
+			conn, err := l.Accept()			
 			if err != nil {
 				continue
 			}
@@ -193,8 +199,7 @@ func TestHealthChecker_RecoveryDetection(t *testing.T) {
 
 	// Restart server
 	t.Log("Restarting server to simulate recovery...")
-	var listenerMu sync.Mutex
-	
+
 	listenerMu.Lock()
 	listener, err = net.Listen("tcp", testAddr) 
 	listenerMu.Unlock()
