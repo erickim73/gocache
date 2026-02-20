@@ -158,11 +158,15 @@ class GoCacheClient:
         self._buffer = bytearray()
     
     def close(self) -> None:
-        """Close the TCP connection and release the socket"""
+        """
+        Close the TCP connection and release the socket
+        """
         self._sock.close()
         
     def __enter__(self):
-        """Called when entering a 'with' block"""
+        """
+        Called when entering a 'with' block
+        """
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
@@ -172,9 +176,98 @@ class GoCacheClient:
         self.close()
         return False
     
+    # private socket methods
     
+    def _send(self, *args) -> None:
+        """
+        Serialize a command to RESP and write it to the socket
+        """
+        try:
+            self._sock.sendall(encode_command(*args))
+        except OSError as e:
+            raise GoCacheConnectionError(f"Failed to send command to server: {e}") from e
+        
+    def _read_response(self):
+        """
+        Read a complete RESP message from the socket and return a parsed Python value
+        """
+        # drain socket until we have full resp message
+        self._fill_buffer_until_complete()
+        
+        # parse whatever complete message is at the front of the buffer
+        value, consumed = _parse(bytes(self._buffer), 0)
+        
+        # discard the bytes we just consumed
+        del self._buffer[:consumed]
+        
+        # if server returned a resp error, parser gives us an Exception object
+        if isinstance(value, Exception):
+            raise GoCacheCommandError(str(value))
+        
+        return value
+    
+    def _fill_buffer_until_complete(self) -> None:
+        """
+        Keep reading from socket until self._buffer contains exactly one complete resp message
+        """
+        
+        while True:
+            # try to parse what we have so far
+            try:
+                _parse(bytes(self._buffer), 0)
+                return # parse succeeded -> buffer contains a complete message
+            except (ValueError, IndexError):
+                pass # incomplete data - fall through to read more bytes
 
-# tests
+            # read next chunk from socket
+            try:
+                chunk = self._sock.recv(4096)
+            except OSError as e:
+                raise GoCacheConnectionError(f"Connection lost while reading: {e}") from e
+
+            # an empty recv() means the server closed the connection
+            if not chunk:
+                raise GoCacheConnectionError(
+                    "Server closed the connection unexpectedly."
+                )
+                
+            self._buffer.extend(chunk)
+            
+    # public command methods
+    
+    def ping(self) -> str:
+        """
+        Send PING. Returns 'PONG' on a healthy connection
+        """
+        self._send("PING")
+        return self._read_response()
+
+    def get(self, key: str):
+        """
+        Get the value for a key. Returns the string value, or None if the key doesn't exist
+        """
+        self._send("GET", key)
+        return self._read_response()
+    
+    def set(self, key: str, value: str, ex: int | None = None) -> str:
+        """
+        Set a key to a value. Returns 'OK' on success
+        """
+        # conditionally append EX only when a TTL is specified
+        if ex is not None:
+            self._send("SET", key, value, "EX", ex)
+        else:
+            self._send("SET", key, value)
+        return self._read_response()
+    
+    def delete(self, *keys: str) -> int:
+        """
+        Delete one or more keys. Returns the number of keys that were deleted
+        """
+        self._send("DEL", *keys)
+        return self._read_response()
+    
+# ============== tests =============================
 
 if __name__ == "__main__":
     print("=== Encoder Tests ===")
