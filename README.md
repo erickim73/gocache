@@ -5,8 +5,9 @@
 A Redis-compatible distributed cache built from scratch in Go — featuring leader-follower replication, horizontal sharding via consistent hashing, pub/sub, and MULTI/EXEC transactions.
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)](https://go.dev/)
-<!-- [![License](https://img.shields.io/badge/license-MIT-blue?style=flat)](LICENSE) -->
-<!-- [![Protocol](https://img.shields.io/badge/protocol-RESP-red?style=flat)](docs/api.md) -->
+[![PyPI](https://img.shields.io/pypi/v/gocache?style=flat&logo=python&label=gocache)](https://pypi.org/project/gocache/)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat)](LICENSE)
+[![Protocol](https://img.shields.io/badge/protocol-RESP-red?style=flat)](docs/api.md)
 
 [Features](#features) • [Architecture](#architecture) • [Quick Start](#quick-start) • [Performance](#performance) • [Documentation](#documentation)
 
@@ -81,6 +82,10 @@ Writes are handled by the shard leader. Cross-shard requests receive a `-MOVED` 
 
 ## Quick Start
 
+### Docker (recommended)
+
+Spins up the full three-node cluster — leader, two followers, Prometheus, and Grafana.
+
 ```bash
 git clone https://github.com/erickim73/gocache.git
 cd gocache
@@ -99,6 +104,31 @@ redis-cli -p 7002 GET hello
 redis-cli -p 7000 SUBSCRIBE news          # terminal 1: enter subscriber mode
 redis-cli -p 7000 PUBLISH news "update"  # terminal 2: publish a message
 ```
+
+<!-- ADDED: Python client section — was previously missing entirely -->
+### Python Client
+
+Install the client library from PyPI:
+
+```bash
+pip install gocache
+```
+
+Start the server first (see Docker section above), then:
+
+```python
+from gocache import GoCacheClient
+
+with GoCacheClient("localhost", 7000) as cache:
+    cache.ping()                              # → 'PONG'
+    cache.set("hello", "world")               # → 'OK'
+    cache.get("hello")                        # → 'world'
+    cache.set("session", "abc123", ex=3600)   # → 'OK'  (expires in 1 hour)
+    cache.delete("hello")                     # → 1
+```
+
+The `with` statement guarantees the connection is closed on exit. See the [full Python client docs](pkg/client/python/README.md) for the complete API reference.
+<!-- END ADDED -->
 
 ---
 
@@ -131,7 +161,9 @@ gocache/
 │   ├── pubsub/          # Channel subscriptions, pattern matching, message fanout
 │   └── config/          # YAML config loading, flag parsing, cluster topology helpers
 ├── pkg/
-│   └── protocol/        # RESP parser and encoder (arrays, bulk strings, errors, integers)
+│   ├── protocol/        # RESP parser and encoder (arrays, bulk strings, errors, integers)
+│   └── client/
+│       └── python/      # Python client library (also on PyPI as `gocache`)
 └── server/
     ├── commands.go      # All command handlers: SET, GET, DEL, MULTI/EXEC, SUBSCRIBE, etc.
     ├── cluster.go       # Cluster command routing, MOVED redirects, consistent hashing
@@ -147,3 +179,4 @@ gocache/
 | [API Reference](docs/api.md) | All supported commands, syntax, return values, and error codes |
 | [Deployment Guide](docs/deployment.md) | Single node, leader-follower, and full cluster setup |
 | [Configuration Reference](docs/configuration.md) | Every config file field and CLI flag with defaults |
+| [Python Client](pkg/client/python/README.md) | Full Python client API reference and examples |
