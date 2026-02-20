@@ -1,7 +1,7 @@
 import time
 import unittest
 
-from client import (
+from gocache import (
     encode_command,
     parse_response,
     GoCacheClient,
