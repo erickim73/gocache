@@ -323,3 +323,45 @@ if __name__ == "__main__":
         raw_ping()
     except ConnectionRefusedError:
         print("Server not running — skipping live test.")
+        
+    
+    # --- Test GoCacheClient class
+    print("\n=== GoCacheClient class tests (requires running GoCache server) ===")
+    try:
+        with GoCacheClient("localhost", 6379) as client:
+            # ping
+            result = client.ping()
+            print(f"ping()              → {result!r}  (correct: {result == 'PONG'})")
+            
+            # set() and get()
+            client.set("phase2:key", "hello")
+            result = client.get("phase2:key")
+            print(f"get(existing key)   → {result!r}  (correct: {result == 'hello'})")
+            
+            # get() on missing key returns None
+            result = client.get("phase2:missing")
+            print(f"get(missing key)    → {result!r}  (correct: {result is None})")
+            
+            # delete() returns count of deleted keys
+            result = client.delete("phase2:key")
+            print(f"delete(1 key)       → {result!r}  (correct: {result == 1})")
+            
+            # delete() of already-gone key returns 0
+            result = client.delete("phase2:key")
+            print(f"delete(missing)     → {result!r}  (correct: {result == 0})")
+            
+            # server error becomes GoCacheCommandError
+            try:
+                client._send("INVALID_CMD")
+                client._read_response()
+            except GoCacheCommandError as e:
+                print(f"server error raised  → GoCacheCommandError: {e}  ✓")
+                
+        # connection refused becomes GoCacheConnectionError
+        try:
+            GoCacheClient("localhost", 19999) # Nothing listening here
+        except GoCacheConnectionError as e:
+            print(f"bad connect raised   → GoCacheConnectionError: {e}  ✓")
+
+    except GoCacheConnectionError:
+        print("Server not running — skipping GoCacheClient tests.")
