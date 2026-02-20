@@ -9,8 +9,12 @@ class GoCacheConnectionError(GoCacheError):
 
 class GoCacheCommandError(GoCacheError):
     """Raised when the server returns a RESP '-' error response."""
+    
+class _IncompleteData(Exception):
+    """Buffer doesn't have enough bytes yet. just read more"""
+    pass
 
-def raw_ping(host: str = "localhost", port: int = 7000) -> None:
+def raw_ping(host: str = "localhost", port: int = 6379) -> None:
     """
     opens a TCP socket, sends a RESP-encoded PING, and prints the raw bytes
     """
@@ -64,7 +68,10 @@ def _parse(data: bytes, pos: int):
     """
     internal recursive parser. returns (parsed_value, new_position)
     """
-    type_byte = chr(data[pos])
+    try:
+        type_byte = chr(data[pos])
+    except IndexError:
+        raise _IncompleteData("Buffer ended before type byte")
     pos += 1
     
     if type_byte == "+":
@@ -89,6 +96,9 @@ def _parse(data: bytes, pos: int):
         if length == -1:
             # null bulk string
             return None, pos
+        
+        if pos + length + 2 > len(data):
+            raise _IncompleteData(f"Buffer too short for bulk string of length {length}")
     
         # read exactly 'length' bytes, then skip trailing \r\n
         value = data[pos : pos + length].decode()
@@ -117,7 +127,10 @@ def _read_line(data: bytes, pos: int) -> tuple[str, int]:
     """
     read bytes from 'pos' until \r\n, returns the decoded string and position after the \r\n terminator
     """
-    end = data.index(b"\r\n", pos)
+    try:
+        end = data.index(b"\r\n", pos)
+    except ValueError:
+        raise _IncompleteData("No \\r\\n terminator found")
     line = data[pos:end].decode()
     return line, end + 2
 
@@ -137,7 +150,7 @@ class GoCacheClient:
             client.set("key", "value")
             print(client.get("key"))
     """
-    def __init__(self, host: str = "localhost", port: int = 7000) -> None:
+    def __init__(self, host: str = "localhost", port: int = 6379) -> None:
         # store connection parameters so close() and reconnect logic know where to re-establish socket
         self.host = host
         self.port = port
@@ -216,7 +229,7 @@ class GoCacheClient:
             try:
                 _parse(bytes(self._buffer), 0)
                 return # parse succeeded -> buffer contains a complete message
-            except (ValueError, IndexError):
+            except _IncompleteData:
                 pass # incomplete data - fall through to read more bytes
 
             # read next chunk from socket
