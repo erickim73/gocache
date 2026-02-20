@@ -1,9 +1,9 @@
-// In internal/cluster/health_test.go
-
 package cluster
 
 import (
 	"net"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -130,9 +130,10 @@ func TestHealthChecker_RecoveryDetection(t *testing.T) {
 	testAddr := listener.Addr().String()
 
 	// Server that responds to PING
-	serverRunning := true
+	var serverRunning atomic.Bool
+	serverRunning.Store(true)
 	go func() {
-		for serverRunning {
+		for serverRunning.Load() {
 			conn, err := listener.Accept()
 			if err != nil {
 				continue
@@ -178,7 +179,7 @@ func TestHealthChecker_RecoveryDetection(t *testing.T) {
 	// Kill the server
 	t.Log("Stopping server to simulate failure...")
 	listener.Close()
-	serverRunning = false
+	serverRunning.Store(false)
 
 	// Wait for detection (2 failures * 1 second)
 	time.Sleep(4 * time.Second)
@@ -192,16 +193,23 @@ func TestHealthChecker_RecoveryDetection(t *testing.T) {
 
 	// Restart server
 	t.Log("Restarting server to simulate recovery...")
-	listener, err = net.Listen("tcp", testAddr)
+	var listenerMu sync.Mutex
+	
+	listenerMu.Lock()
+	listener, err = net.Listen("tcp", testAddr) 
+	listenerMu.Unlock()
 	if err != nil {
 		t.Fatalf("Failed to restart server: %v", err)
 	}
 	defer listener.Close()
 
-	serverRunning = true
+	serverRunning.Store(true)
 	go func() {
-		for serverRunning {
-			conn, err := listener.Accept()
+		for serverRunning.Load() {
+			listenerMu.Lock()
+			l := listener
+			listenerMu.Unlock()
+			conn, err := l.Accept()
 			if err != nil {
 				continue
 			}
