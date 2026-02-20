@@ -1,5 +1,5 @@
 import time
-from client import GoCacheClient, GoCacheConnectionError, GoCacheCommandError
+from gocache import GoCacheClient, GoCacheConnectionError, GoCacheCommandError
 
 # print a section header so output is easy to follow
 def section(title: str) -> None:

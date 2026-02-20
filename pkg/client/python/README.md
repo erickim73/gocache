@@ -5,19 +5,9 @@ A pure-Python client library for [GoCache](../../../README.md) — a Redis-compa
 ---
 
 ## Installation
-
-No package manager needed. Copy `client.py` into your project and import from it directly.
-
 ```bash
-# Clone the repo
-git clone https://github.com/erickim73/gocache.git
-cd gocache
-
-# Verify Python version (3.10+ required)
-python --version
+pip install gocache
 ```
-
-That's it. `client.py` uses only the Python standard library (`socket`, `time`).
 
 ---
 
@@ -40,7 +30,7 @@ The server listens on `localhost:6379` by default.
 ## Quick Start
 
 ```python
-from client import GoCacheClient
+from gocache import GoCacheClient
 
 with GoCacheClient("localhost", 6379) as cache:
     # Health check
@@ -187,14 +177,14 @@ with GoCacheClient("localhost", 6379) as c:
 
 ## Error Handling
 
-The client defines three exception types, all in `client.py`:
+The client defines three exception types, all in the gocache package:
 
 ### `GoCacheError`
 
 Base class for all GoCache-specific errors. Catch this if you want to handle any GoCache error in one place.
 
 ```python
-from client import GoCacheError
+from gocache import GoCacheError
 
 try:
     client.set("key", "value")
@@ -209,7 +199,7 @@ except GoCacheError as e:
 Raised when the client cannot connect to the server, or when the connection is lost mid-command.
 
 ```python
-from client import GoCacheConnectionError
+from gocache import GoCacheConnectionError
 
 try:
     client = GoCacheClient("localhost", 19999)   # nothing listening here
@@ -225,7 +215,7 @@ except GoCacheConnectionError as e:
 Raised when the server returns a RESP error response (a `-` type message). This indicates the server understood the command but rejected it — for example, an unknown command name or wrong number of arguments.
 
 ```python
-from client import GoCacheCommandError
+from gocache import GoCacheCommandError
 
 try:
     client._send("NOT_A_COMMAND")
@@ -289,10 +279,14 @@ The test suite has two layers:
 
 ```
 pkg/client/python/
-├── client.py        # Client library — all code lives here
-├── examples.py      # End-to-end demo script
-├── test_client.py   # Unit and integration tests
-└── README.md        # This file
+├── gocache/
+│   ├── __init__.py
+│   └── client.py
+├── pyproject.toml
+├── examples.py
+├── tests/
+│   └── test_client.py
+└── README.md
 ```
 
 ---
