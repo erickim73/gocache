@@ -565,8 +565,11 @@ func (f *Follower) startElection() {
 		}
 	} else {
 		// no priority set. skip election entirely to avoid split brain
-		slog.Info("No priority configured, skipping election to avoid split-brain", "follower_id", f.id)
-		return
+		if len(f.clusterNodes) > 0 {
+			slog.Info("No priority configured in cluster mode, skipping election to avoid split-brain", "follower_id", f.id)
+			return
+		}
+		slog.Info("No priority configured but running in simple mode, proceeding with self-promotion", "follower_id", f.id)
 	}
 
 	// promote self to leader

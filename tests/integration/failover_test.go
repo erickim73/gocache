@@ -180,7 +180,7 @@ func TestReplicationAfterFailover(t *testing.T) {
 	}
 
 	// test DEL to ensure all operations work
-	if got := followerClient.Del("after-failover"); got != "OK" {
+	if got := followerClient.Del("after-failover"); got != "1" {
 		t.Fatalf("new leader DEL failed: got %q", got)
 	}
 
