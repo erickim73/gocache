@@ -24,7 +24,7 @@ func TestSetGetDelRoundTrip(t *testing.T) {
 	}
 
 	// delete key
-	if got := client.Del("myKey"); got != "OK" {
+	if got := client.Del("myKey"); got != "1" {
 		t.Fatalf("DEL failed: expected OK, got %q", got)
 	}
 

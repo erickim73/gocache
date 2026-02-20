@@ -57,7 +57,7 @@ func TestDeleteReplication(t *testing.T) {
 	})
 
 	// delete on leader.
-	if got := leaderClient.Del("delete-test-key"); got != "OK" {
+	if got := leaderClient.Del("delete-test-key"); got != "1" {
 		t.Fatalf("leader DEL failed: got %q", got)
 	}
 
