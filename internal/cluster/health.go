@@ -15,9 +15,9 @@ import (
 type NodeStatus int
 
 const (
-	NodeStatusAlive NodeStatus = iota
-	NodeStatusSuspected // missed some pings but not confirmed dead
-	NodeStatusDead // confirmed dead after multiple failures
+	NodeStatusAlive     NodeStatus = iota
+	NodeStatusSuspected            // missed some pings but not confirmed dead
+	NodeStatusDead                 // confirmed dead after multiple failures
 )
 
 func (ns NodeStatus) String() string {
@@ -35,12 +35,12 @@ func (ns NodeStatus) String() string {
 
 // tracks the health information for a single node
 type NodeHealth struct {
-	NodeID string
-	Address string
-	Status NodeStatus
-	LastSuccessfulPing time.Time
-	LastFailedPing time.Time
-	ConsecutiveFailures int
+	NodeID               string
+	Address              string
+	Status               NodeStatus
+	LastSuccessfulPing   time.Time
+	LastFailedPing       time.Time
+	ConsecutiveFailures  int
 	ConsecutiveSuccesses int
 }
 
@@ -49,29 +49,29 @@ type HealthChecker struct {
 	nodeHealth map[string]*NodeHealth // nodeID -> health info
 
 	// config
-	checkInterval time.Duration // how often to check (5 sec)
-	failureThreshold int // failures before marking dead (3)
-	timeout time.Duration // ping timeout (2 sec)
+	checkInterval    time.Duration // how often to check (5 sec)
+	failureThreshold int           // failures before marking dead (3)
+	timeout          time.Duration // ping timeout (2 sec)
 
 	// dependencies
-	hashRing *HashRing
-	onNodeFailed func(nodeID string) // callback when node dies
+	hashRing        *HashRing
+	onNodeFailed    func(nodeID string) // callback when node dies
 	onNodeRecovered func(nodeID string) // callback when node recovers
 
-	mu sync.RWMutex
+	mu     sync.RWMutex
 	stopCh chan struct{}
-	wg sync.WaitGroup
+	wg     sync.WaitGroup
 }
 
 // creates a new health checker
 func NewHealthChecker(hashRing *HashRing, checkInterval time.Duration, failureThreshold int, timeout time.Duration) *HealthChecker {
 	return &HealthChecker{
-		nodeHealth: make(map[string] *NodeHealth),
-		checkInterval: checkInterval,
+		nodeHealth:       make(map[string]*NodeHealth),
+		checkInterval:    checkInterval,
 		failureThreshold: failureThreshold,
-		timeout: timeout,
-		hashRing: hashRing,
-		stopCh: make(chan struct{}),
+		timeout:          timeout,
+		hashRing:         hashRing,
+		stopCh:           make(chan struct{}),
 	}
 }
 
@@ -89,12 +89,12 @@ func (hc *HealthChecker) RegisterNode(nodeID string, address string) {
 	defer hc.mu.Unlock()
 
 	_, exists := hc.nodeHealth[nodeID]
-	if ! exists {
+	if !exists {
 		hc.nodeHealth[nodeID] = &NodeHealth{
-			NodeID: nodeID,
-			Address: address,
-			Status: NodeStatusAlive,
-			LastSuccessfulPing: time.Now(),
+			NodeID:               nodeID,
+			Address:              address,
+			Status:               NodeStatusAlive,
+			LastSuccessfulPing:   time.Now(),
 			ConsecutiveSuccesses: 1,
 		}
 		slog.Info("Health checker: node registered",
@@ -117,7 +117,7 @@ func (hc *HealthChecker) UnregisterNode(nodeID string) {
 func (hc *HealthChecker) Start() {
 	hc.wg.Add(1)
 	go hc.healthCheckLoop()
-	
+
 	slog.Info("Health checker started",
 		"check_interval", hc.checkInterval,
 		"failure_threshold", hc.failureThreshold,
@@ -143,9 +143,9 @@ func (hc *HealthChecker) healthCheckLoop() {
 
 	for {
 		select {
-		case <- ticker.C:
+		case <-ticker.C:
 			hc.checkAllNodes()
-		case <- hc.stopCh: 
+		case <-hc.stopCh:
 			return
 		}
 	}
@@ -321,7 +321,7 @@ func (hc *HealthChecker) GetNodeStatus(nodeID string) NodeStatus {
 func (hc *HealthChecker) GetAllNodeStatus() map[string]*NodeHealth {
 	hc.mu.RLock()
 	defer hc.mu.RUnlock()
-	
+
 	statusCopy := make(map[string]*NodeHealth)
 	for nodeID, health := range hc.nodeHealth {
 		// create a copy

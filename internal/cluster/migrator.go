@@ -11,15 +11,15 @@ import (
 // orchestrates data migration when nodes join or leave the cluster
 // coordinates between the cache, hash ring, and network transfer
 type Migrator struct {
-	cache *cache.Cache // local cache containing data
-	hashRing *HashRing // hash ring for routing decisions
-	mu sync.Mutex // prevents concurrent migrations
+	cache    *cache.Cache // local cache containing data
+	hashRing *HashRing    // hash ring for routing decisions
+	mu       sync.Mutex   // prevents concurrent migrations
 }
 
 // creates a new migration coordinator
 func NewMigrator(cache *cache.Cache, hashRing *HashRing) *Migrator {
 	return &Migrator{
-		cache: cache,
+		cache:    cache,
 		hashRing: hashRing,
 	}
 }
@@ -37,7 +37,7 @@ func (m *Migrator) MigrateToNewNode(newNodeID string, newNodeAddr string) error 
 
 	// calculate which keys need to move by determining which has range will be owned by new node
 	slog.Debug("Calculating migration tasks", "node_id", newNodeID)
-	
+
 	tasks := m.hashRing.CalculateMigrations(newNodeID)
 
 	// add node to hash ring
@@ -107,7 +107,7 @@ func (m *Migrator) MigrateToNewNode(newNodeID string, newNodeAddr string) error 
 		err := TransferKeysBatch(newNodeAddr, keys, values, 100) // 100 keys per batch
 		if err != nil {
 			// if transfer fails, abort entire migration
-			return fmt.Errorf("task %d transfer failed: %v", i + 1, err)
+			return fmt.Errorf("task %d transfer failed: %v", i+1, err)
 		}
 
 		// verify transfer before deleting
@@ -115,7 +115,7 @@ func (m *Migrator) MigrateToNewNode(newNodeID string, newNodeAddr string) error 
 
 		err = VerifyTransfer(newNodeAddr, keys)
 		if err != nil {
-			return fmt.Errorf("task %d verification failed: %v", i + 1, err)
+			return fmt.Errorf("task %d verification failed: %v", i+1, err)
 		}
 
 		// delete from local cache only after successful transfer
@@ -210,13 +210,13 @@ func (m *Migrator) MigrateFromLeavingNode(leavingNodeID string) error {
 		)
 		err := TransferKeysBatch(targetAddr, keys, values, 100)
 		if err != nil {
-			return fmt.Errorf("task %d transfer failed: %v", i + 1, err)
+			return fmt.Errorf("task %d transfer failed: %v", i+1, err)
 		}
 
 		// verify transfer
 		err = VerifyTransfer(targetAddr, keys)
 		if err != nil {
-			return fmt.Errorf("task %d verification failed: %v", i + 1, err)
+			return fmt.Errorf("task %d verification failed: %v", i+1, err)
 		}
 
 		// delete from local cache
@@ -243,9 +243,9 @@ func (m *Migrator) MigrateFromLeavingNode(leavingNodeID string) error {
 
 // returns information about ongoing migrations
 type MigrationStatus struct {
-	InProgress bool 
-	NodeID string
-	Phase string
+	InProgress bool
+	NodeID     string
+	Phase      string
 }
 
 // returns current migration status
@@ -261,6 +261,6 @@ func (m *Migrator) Status() MigrationStatus {
 
 	return MigrationStatus{
 		InProgress: true,
-		Phase: "unknown",
+		Phase:      "unknown",
 	}
 }

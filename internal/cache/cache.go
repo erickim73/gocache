@@ -1,45 +1,44 @@
 package cache
 
 import (
-	"sync"
-	"time"
 	"github.com/erickim73/gocache/internal/lru"
 	"github.com/erickim73/gocache/internal/metrics"
+	"sync"
+	"time"
 )
 
-
 type CacheItem struct {
-	value string
+	value     string
 	expiresAt time.Time
-	node *lru.Node
+	node      *lru.Node
 }
 
 type Cache struct {
-	data map[string]*CacheItem
-	lru *lru.LRU
-	maxSize int
-	mu sync.RWMutex   // read write lock
-	metrics *metrics.Collector // metrics collector for recording cache operations
-	currentMemoryBytes int64 // track current memory usage for metrics
+	data               map[string]*CacheItem
+	lru                *lru.LRU
+	maxSize            int
+	mu                 sync.RWMutex       // read write lock
+	metrics            *metrics.Collector // metrics collector for recording cache operations
+	currentMemoryBytes int64              // track current memory usage for metrics
 }
 
 type SnapshotEntry struct {
-	Value string
+	Value     string
 	ExpiresAt time.Time
 }
 
-func NewCache(maxSize int, metricsCollector *metrics.Collector) (*Cache, error) {	
+func NewCache(maxSize int, metricsCollector *metrics.Collector) (*Cache, error) {
 	return &Cache{
-		data: make(map[string]*CacheItem),
-		lru: &lru.LRU{},
-		maxSize: maxSize,
-		metrics: metricsCollector,
+		data:               make(map[string]*CacheItem),
+		lru:                &lru.LRU{},
+		maxSize:            maxSize,
+		metrics:            metricsCollector,
 		currentMemoryBytes: 0,
 	}, nil
 }
 
 func (c *Cache) Set(key, value string, ttl time.Duration) error {
-	c.mu.Lock() 		// exclusive access for writes
+	c.mu.Lock() // exclusive access for writes
 	defer c.mu.Unlock()
 
 	// check if key exists
@@ -77,9 +76,9 @@ func (c *Cache) Set(key, value string, ttl time.Duration) error {
 	} else {
 		node := c.lru.Add(key)
 		c.data[key] = &CacheItem{
-			value: value,
+			value:     value,
 			expiresAt: expiresAt,
-			node: node,
+			node:      node,
 		}
 	}
 
@@ -96,13 +95,13 @@ func (c *Cache) Set(key, value string, ttl time.Duration) error {
 }
 
 func (c *Cache) Get(key string) (string, bool) {
-	c.mu.Lock() 		// multiple readers can enter
+	c.mu.Lock() // multiple readers can enter
 	defer c.mu.Unlock()
 
 	c.metrics.RecordOperation("get")
-	
+
 	node, exists := c.data[key]
-	
+
 	// key doesn't exist in cache
 	if !exists {
 		c.metrics.RecordCacheMiss()
@@ -115,7 +114,7 @@ func (c *Cache) Get(key string) (string, bool) {
 		c.metrics.RecordExpiration()
 		return "", false
 	}
-	
+
 	// key exists and is valid
 	c.metrics.RecordCacheHit()
 	c.lru.MoveToFront(node.node)
@@ -123,7 +122,7 @@ func (c *Cache) Get(key string) (string, bool) {
 }
 
 func (c *Cache) Delete(key string) error {
-	c.mu.Lock() 		// exclusive access for writes
+	c.mu.Lock() // exclusive access for writes
 	defer c.mu.Unlock()
 
 	item, exists := c.data[key]
@@ -138,7 +137,7 @@ func (c *Cache) Delete(key string) error {
 	c.currentMemoryBytes -= itemSize
 
 	c.lru.RemoveNode(item.node)
-	delete(c.data, key)	
+	delete(c.data, key)
 
 	c.metrics.RecordOperation("delete")
 	c.metrics.UpdateItemsCount(len(c.data))
@@ -149,13 +148,13 @@ func (c *Cache) Delete(key string) error {
 
 // calculate memory usage of cache item
 func (c *Cache) calculateItemSize(key string, value string) int64 {
-	// string memory in go: 
+	// string memory in go:
 	// string header: 16 bytes (pointer + length). string data: len(string) bytes
 
-	keySize := int64(len(key) + 16) // key string + header
+	keySize := int64(len(key) + 16)     // key string + header
 	valueSize := int64(len(value) + 16) // value string + header
 
-	// overhead for CacheItem struct: 
+	// overhead for CacheItem struct:
 	// - expiresAt: 24 bytes, node pointer: 8 bytes, map entry overhead: ~16 bytes
 	overhead := int64(64)
 
@@ -168,7 +167,7 @@ func (c *Cache) Snapshot() map[string]SnapshotEntry {
 	c.mu.Lock()
 	for k, v := range c.data {
 		snapshot[k] = SnapshotEntry{
-			Value: v.value,
+			Value:     v.value,
 			ExpiresAt: v.expiresAt,
 		}
 	}
@@ -284,9 +283,9 @@ func (c *Cache) SetInternal(key, value string, ttl time.Duration) error {
 // gets a value without acquiring the lock. use when the lock is already held
 func (c *Cache) GetInternal(key string) (string, bool) {
 	c.metrics.RecordOperation("get")
-	
+
 	node, exists := c.data[key]
-	
+
 	if !exists {
 		c.metrics.RecordCacheMiss()
 		return "", false
@@ -297,7 +296,7 @@ func (c *Cache) GetInternal(key string) (string, bool) {
 		c.metrics.RecordExpiration()
 		return "", false
 	}
-	
+
 	c.metrics.RecordCacheHit()
 	c.lru.MoveToFront(node.node)
 	return node.value, true
@@ -332,4 +331,3 @@ func (c *Cache) Lock() {
 func (c *Cache) Unlock() {
 	c.mu.Unlock()
 }
-

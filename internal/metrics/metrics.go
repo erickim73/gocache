@@ -1,23 +1,23 @@
 package metrics
 
 import (
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 // collector holds all prometheus metrics for gocache
 type Collector struct {
-	OperationsTotal *prometheus.CounterVec // tracks total number of operations by type
-	CacheHits prometheus.Counter // tracks successful cache lookups
-	CacheMisses prometheus.Counter // tracks failed cache lookups
-	OperationDuration prometheus.Histogram // tracks latency distribution of operations
-	MemoryBytes prometheus.Gauge // tracks current memory usage of cache
-	ItemsCount prometheus.Gauge // tracks current number of items in cache
-	EvictionsTotal prometheus.Counter // tracks how many items were evicted by lru
-	ExpirationsTotal prometheus.Counter // tracks how many items expired due to ttl
-	ActiveConnections prometheus.Gauge // tracks currently connected clients
-	ReplicationLag prometheus.Gauge // tracks how far behind followers are from leader
-	ConnectedFollowers prometheus.Gauge // tracks number of followers connected to leader
+	OperationsTotal    *prometheus.CounterVec // tracks total number of operations by type
+	CacheHits          prometheus.Counter     // tracks successful cache lookups
+	CacheMisses        prometheus.Counter     // tracks failed cache lookups
+	OperationDuration  prometheus.Histogram   // tracks latency distribution of operations
+	MemoryBytes        prometheus.Gauge       // tracks current memory usage of cache
+	ItemsCount         prometheus.Gauge       // tracks current number of items in cache
+	EvictionsTotal     prometheus.Counter     // tracks how many items were evicted by lru
+	ExpirationsTotal   prometheus.Counter     // tracks how many items expired due to ttl
+	ActiveConnections  prometheus.Gauge       // tracks currently connected clients
+	ReplicationLag     prometheus.Gauge       // tracks how far behind followers are from leader
+	ConnectedFollowers prometheus.Gauge       // tracks number of followers connected to leader
 }
 
 // creates and registers all metrics with prometheus
@@ -51,8 +51,8 @@ func NewCollector() *Collector {
 		// buckets are in seconds: 0.1ms, 1ms, 5ms, 10ms, 50ms, 100ms
 		OperationDuration: promauto.NewHistogram(
 			prometheus.HistogramOpts{
-				Name: "gocache_operation_duration_seconds",
-				Help: "Duration of cache operations in seconds",
+				Name:    "gocache_operation_duration_seconds",
+				Help:    "Duration of cache operations in seconds",
 				Buckets: []float64{0.0001, 0.001, 0.005, 0.01, 0.05, 0.1},
 			},
 		),
@@ -119,7 +119,7 @@ func (c *Collector) RecordOperation(operation string) {
 	c.OperationsTotal.WithLabelValues(operation).Inc()
 }
 
-// increments cache hits counter 
+// increments cache hits counter
 func (c *Collector) RecordCacheHit() {
 	c.CacheHits.Inc()
 }
@@ -129,7 +129,7 @@ func (c *Collector) RecordCacheMiss() {
 	c.CacheMisses.Inc()
 }
 
-// records duration of operation 
+// records duration of operation
 func (c *Collector) RecordOperationDuration(durationSeconds float64) {
 	c.OperationDuration.Observe(durationSeconds)
 }
@@ -154,12 +154,12 @@ func (c *Collector) RecordExpiration() {
 	c.ExpirationsTotal.Inc()
 }
 
-// increases active connection count 
+// increases active connection count
 func (c *Collector) IncrementActiveConnections() {
 	c.ActiveConnections.Inc()
 }
 
-// decreases active connection count 
+// decreases active connection count
 func (c *Collector) DecrementActiveConnections() {
 	c.ActiveConnections.Dec()
 }

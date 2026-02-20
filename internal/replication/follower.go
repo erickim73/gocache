@@ -18,26 +18,26 @@ import (
 type Follower struct {
 	cache      *cache.Cache
 	aof        *persistence.AOF
-	leaderAddr string       // host:replPort
-	id         string       // follower id
-	conn       net.Conn     // tcp connection to leader
+	leaderAddr string        // host:replPort
+	id         string        // follower id
+	conn       net.Conn      // tcp connection to leader
 	reader     *bufio.Reader // follower uses this reader
-	lastSeqNum int64        // next sequence to assign
-	mu         sync.RWMutex // protects conn and lastSeqNum
+	lastSeqNum int64         // next sequence to assign
+	mu         sync.RWMutex  // protects conn and lastSeqNum
 
 	lastHeartbeat time.Time    // when did follower last hear from leader
 	heartbeatMu   sync.RWMutex // protects lastHeartbeat and isLeaderAlive
 	isLeaderAlive bool         // is leader currently alive
 
-	clusterNodes []config.NodeInfo // all nodes in cluster (empty if not in cluster mode)
-	myPriority   int               // my priority (0 if not in cluster mode)
-	myReplPort   int               // replication port for when node becomes leader
-	peerReplAddrs []string // peer replication addresses to check before self-promoting
+	clusterNodes  []config.NodeInfo // all nodes in cluster (empty if not in cluster mode)
+	myPriority    int               // my priority (0 if not in cluster mode)
+	myReplPort    int               // replication port for when node becomes leader
+	peerReplAddrs []string          // peer replication addresses to check before self-promoting
 
 	promoted   bool         // set to true when promoted to leader
 	promotedMu sync.RWMutex // protects promoted flag
 
-	nodeStateUpdater NodeStateUpdater  
+	nodeStateUpdater NodeStateUpdater
 
 	stopCh chan struct{} // Server.Stop() can signal the follower loop to exit
 }
@@ -63,17 +63,17 @@ func NewFollower(cache *cache.Cache, aof *persistence.AOF, leaderAddr string, id
 	}
 
 	follower := &Follower{
-		cache:        cache,
-		aof:          aof,
-		leaderAddr:   leaderAddr,
-		lastSeqNum:   0,
-		id:           id,
-		clusterNodes: clusterNodes,
-		myPriority:   myPriority,
-		myReplPort:   myReplPort,
-		peerReplAddrs: peerReplAddrs,
+		cache:            cache,
+		aof:              aof,
+		leaderAddr:       leaderAddr,
+		lastSeqNum:       0,
+		id:               id,
+		clusterNodes:     clusterNodes,
+		myPriority:       myPriority,
+		myReplPort:       myReplPort,
+		peerReplAddrs:    peerReplAddrs,
 		nodeStateUpdater: nodeStateUpdater,
-		stopCh: make(chan struct{}),
+		stopCh:           make(chan struct{}),
 	}
 
 	return follower, nil
@@ -82,7 +82,7 @@ func NewFollower(cache *cache.Cache, aof *persistence.AOF, leaderAddr string, id
 func (f *Follower) Start() error {
 	backoff := 200 * time.Millisecond
 	maxBackoff := 5 * time.Second
-	failedAttempts := 0  // track failed attempts
+	failedAttempts := 0            // track failed attempts
 	maxAttemptsBeforeElection := 7 // after 7 fails, trigger election
 
 	for {
@@ -99,7 +99,7 @@ func (f *Follower) Start() error {
 		if f.promoted {
 			f.promotedMu.RUnlock()
 			slog.Info("Stopping follower loop (now leader)", "follower_id", f.id)
-			return nil  // exit the loop
+			return nil // exit the loop
 		}
 		f.promotedMu.RUnlock()
 
@@ -111,8 +111,8 @@ func (f *Follower) Start() error {
 
 			if failedAttempts >= maxAttemptsBeforeElection && len(f.clusterNodes) > 0 {
 				slog.Warn("Failed to connect multiple times, triggering election", "follower_id", f.id, "failed_attempts", failedAttempts)
-                go f.startElection()
-                failedAttempts = 0  // Reset counter
+				go f.startElection()
+				failedAttempts = 0 // Reset counter
 			}
 
 			time.Sleep(backoff)
@@ -164,7 +164,7 @@ func (f *Follower) Start() error {
 // signals the follower's Start() loop to exit cleanly
 func (f *Follower) Stop() {
 	select {
-	case <- f.stopCh:
+	case <-f.stopCh:
 		// already closed
 	default:
 		close(f.stopCh)
@@ -565,7 +565,7 @@ func (f *Follower) startElection() {
 		}
 	} else {
 		// no priority set. skip election entirely to avoid split brain
-        slog.Info("No priority configured, skipping election to avoid split-brain", "follower_id", f.id)
+		slog.Info("No priority configured, skipping election to avoid split-brain", "follower_id", f.id)
 		return
 	}
 
@@ -590,7 +590,7 @@ func (f *Follower) startElection() {
 	leader, err := NewLeader(f.cache, f.aof, replPort)
 	if err != nil {
 		slog.Error("Error creating leader", "error", err)
-		
+
 		f.promotedMu.Lock()
 		f.promoted = true
 		f.promotedMu.Unlock()
@@ -647,7 +647,7 @@ func (f *Follower) findNewLeader() string {
 			_ = conn.Close()
 		}
 	}
-	
+
 	// no leader found
 	return ""
 }

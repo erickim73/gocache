@@ -3,46 +3,46 @@ package persistence
 import (
 	"bufio"
 	"fmt"
-	"log/slog"
 	"io"
+	"log/slog"
 	"os"
 	"strconv"
 	"sync"
 	"time"
-	
-	"github.com/erickim73/gocache/pkg/protocol"
+
 	"github.com/erickim73/gocache/internal/cache"
+	"github.com/erickim73/gocache/pkg/protocol"
 )
 
 // Determines how often data is appended to AOF
 type SyncPolicy int
 
 const (
-	SyncAlways SyncPolicy = 0
+	SyncAlways      SyncPolicy = 0
 	SyncEverySecond SyncPolicy = 1
-	SyncNo SyncPolicy = 2
+	SyncNo          SyncPolicy = 2
 )
 
 type AOF struct {
-	file *os.File
-	fileName string
-	snapshotName string
-	mu sync.Mutex   // read write lock
-	policy SyncPolicy
-	cache *cache.Cache
-	done chan struct{}
-	wg sync.WaitGroup
-	growthFactor int64
+	file            *os.File
+	fileName        string
+	snapshotName    string
+	mu              sync.Mutex // read write lock
+	policy          SyncPolicy
+	cache           *cache.Cache
+	done            chan struct{}
+	wg              sync.WaitGroup
+	growthFactor    int64
 	lastRewriteSize int64
-	rewriting bool
-	rewriteMu sync.Mutex
+	rewriting       bool
+	rewriteMu       sync.Mutex
 }
 
 type Operation struct {
-	Type string // SET or DEL
-	Key string
+	Type  string // SET or DEL
+	Key   string
 	Value string
-	TTL int64 // ttl in sec; 0 means it lives forever
+	TTL   int64 // ttl in sec; 0 means it lives forever
 }
 
 func AofExists(fileName string) bool {
@@ -50,23 +50,23 @@ func AofExists(fileName string) bool {
 	return !os.IsNotExist(err)
 }
 
-func NewAOF (fileName string, snapshotName string, policy SyncPolicy, cache *cache.Cache, growthFactor int64) (*AOF, error) {
+func NewAOF(fileName string, snapshotName string, policy SyncPolicy, cache *cache.Cache, growthFactor int64) (*AOF, error) {
 	// open file for read/write, create if it doesn't exist
-	file, err := os.OpenFile(fileName, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0644)
+	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, err
 	}
 
-	aof := &AOF {
-		file: file,
-		fileName: fileName,
-		snapshotName: snapshotName,
-		policy: policy,
-		cache: cache,
-		done: make(chan struct{}),
-		growthFactor: growthFactor,
+	aof := &AOF{
+		file:            file,
+		fileName:        fileName,
+		snapshotName:    snapshotName,
+		policy:          policy,
+		cache:           cache,
+		done:            make(chan struct{}),
+		growthFactor:    growthFactor,
 		lastRewriteSize: 0,
-		rewriting: false,
+		rewriting:       false,
 	}
 
 	if policy == SyncEverySecond {
@@ -108,18 +108,18 @@ func (aof *AOF) Append(data string) error {
 // For SyncEverySecond Policy
 func (aof *AOF) periodicSync() {
 	defer aof.wg.Done()
-	
+
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for {
-		select{
-		case <- ticker.C:
+		select {
+		case <-ticker.C:
 			// sync
 			aof.mu.Lock()
 			aof.file.Sync()
 			aof.mu.Unlock()
-		case <- aof.done:
+		case <-aof.done:
 			// got stop signal
 			return
 		}
@@ -129,7 +129,7 @@ func (aof *AOF) periodicSync() {
 func (aof *AOF) Close() error {
 	select {
 	case <-aof.done:
-		// already closed 
+		// already closed
 	default:
 		close(aof.done)
 	}
@@ -165,7 +165,7 @@ func (aof *AOF) ReadOperations() ([]Operation, error) {
 	defer file.Close()
 
 	reader := bufio.NewReader(file)
-	
+
 	var operations []Operation
 
 	for {
@@ -177,7 +177,7 @@ func (aof *AOF) ReadOperations() ([]Operation, error) {
 			slog.Warn("Skipping corrupted entry", "error", err)
 			continue
 		}
-	
+
 		// type assert based on what Parse() returns
 		partsInterface, ok := result.([]interface{})
 		if !ok || len(partsInterface) == 0 {
@@ -186,7 +186,7 @@ func (aof *AOF) ReadOperations() ([]Operation, error) {
 
 		// convert []interface{} to []string
 		parts := make([]string, len(partsInterface))
-		for i, v := range partsInterface{
+		for i, v := range partsInterface {
 			parts[i], ok = v.(string)
 			if !ok {
 				slog.Warn("Element is not a string", "index", i)
@@ -195,7 +195,7 @@ func (aof *AOF) ReadOperations() ([]Operation, error) {
 		}
 
 		op := Operation{}
-		op.Type= parts[0]
+		op.Type = parts[0]
 		if op.Type == "SET" && len(parts) >= 3 {
 			op.Key = parts[1]
 			op.Value = parts[2]
@@ -216,18 +216,17 @@ func (aof *AOF) ReadOperations() ([]Operation, error) {
 	return operations, nil
 }
 
-
-func (aof *AOF) rewriteAOF () error {
+func (aof *AOF) rewriteAOF() error {
 	// create a new temp aof file
 	tempName := aof.fileName + "_temp"
-	tempFile, err := os.OpenFile(tempName, os.O_CREATE | os.O_WRONLY | os.O_TRUNC, 0644)
+	tempFile, err := os.OpenFile(tempName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
 
 	success := false
 	defer func() {
-		if tempFile != nil { 
+		if tempFile != nil {
 			// check if already closed
 			tempFile.Close()
 		}
@@ -254,7 +253,7 @@ func (aof *AOF) rewriteAOF () error {
 				continue // skip expired items
 			}
 		}
-		
+
 		ttlSeconds := strconv.Itoa(int(ttl.Seconds()))
 		aofCommand := protocol.EncodeArray([]interface{}{"SET", key, entry.Value, ttlSeconds})
 
@@ -300,20 +299,19 @@ func (aof *AOF) rewriteAOF () error {
 		slog.Error("Renaming file failed", "error", err)
 		return fmt.Errorf("renaming file failed: %v", err)
 	}
-	
+
 	// reopen file so future writes append to new aof
-	newFile, err := os.OpenFile(aof.fileName, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0644)
+	newFile, err := os.OpenFile(aof.fileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		slog.Error("Failed to reopen new AOF", "error", err)
 		return fmt.Errorf("failed to reopen new aof: %v", err)
 	}
-	
-	aof.file = newFile
 
+	aof.file = newFile
 
 	// update baseline size
 	info, _ := os.Stat(aof.fileName)
-	aof.lastRewriteSize = info.Size() 
+	aof.lastRewriteSize = info.Size()
 
 	// mark rewrite successful
 	success = true
@@ -331,7 +329,7 @@ func (aof *AOF) checkRewriteTrigger() {
 	// current aof file size
 	info, err := aof.file.Stat()
 	if err != nil {
-		return 
+		return
 	}
 	currentSize := info.Size()
 
@@ -347,7 +345,7 @@ func (aof *AOF) checkRewriteTrigger() {
 	if growthRatio > float64(aof.growthFactor) {
 		// set flag and launch rewrite
 		aof.rewriting = true
-		
+
 		aof.wg.Add(1)
 		go func() {
 			defer aof.wg.Done()

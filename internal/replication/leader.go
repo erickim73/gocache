@@ -22,9 +22,9 @@ type Leader struct {
 	mu        sync.RWMutex
 	listener  net.Listener
 	replPort  int
-	ctx context.Context
-	cancel context.CancelFunc
-	wg sync.WaitGroup
+	ctx       context.Context
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
 }
 
 type FollowerConn struct {
@@ -60,8 +60,8 @@ func NewLeader(cache *cache.Cache, aof *persistence.AOF, replPort int) (*Leader,
 		seqNum:    0,
 		listener:  listener,
 		replPort:  replPort,
-		ctx: ctx,
-		cancel: cancel,
+		ctx:       ctx,
+		cancel:    cancel,
 	}
 
 	return leader, nil
@@ -81,7 +81,7 @@ func (l *Leader) Start() error {
 		if err != nil {
 			// check if this is intentional shutdown
 			select {
-			case <- l.ctx.Done():
+			case <-l.ctx.Done():
 				slog.Info("Leader replication server shutting down cleanly")
 				return nil
 			default:
@@ -89,7 +89,7 @@ func (l *Leader) Start() error {
 				continue
 			}
 		}
-		
+
 		// only spawn goroutine if conn is non-nil
 		if conn != nil {
 			go l.handleFollower(conn)
@@ -305,10 +305,10 @@ func (l *Leader) sendHeartbeats() {
 	leaderID := "leader"
 	for {
 		select {
-		case <- l.ctx.Done():
+		case <-l.ctx.Done():
 			slog.Info("Leader heartbeat sender stopping")
 			return
-		case <- ticker.C:
+		case <-ticker.C:
 			l.mu.RLock()
 			seq := l.seqNum
 			followersCopy := make([]*FollowerConn, len(l.followers))
@@ -340,7 +340,7 @@ func (l *Leader) sendHeartbeats() {
 
 func (l *Leader) monitorFollowerHealth() {
 	defer l.wg.Done()
-	
+
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
@@ -348,10 +348,10 @@ func (l *Leader) monitorFollowerHealth() {
 
 	for {
 		select {
-		case <- l.ctx.Done():
+		case <-l.ctx.Done():
 			slog.Info("Leader health monitor stopping")
 			return
-		case <- ticker.C:
+		case <-ticker.C:
 			l.mu.RLock()
 			followersCopy := make([]*FollowerConn, len(l.followers))
 			copy(followersCopy, l.followers)

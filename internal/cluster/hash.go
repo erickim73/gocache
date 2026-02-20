@@ -11,22 +11,22 @@ import (
 )
 
 type HashRing struct {
-	hashValues []uint32 // store sorted list of hash values for binary search
-	hashToShard map[uint32]string // map hash values to shard IDs
-	nodeAddresses map[string]string 
-	virtualNodes int // number of virtual nodes per server
-	shardToNodes map[string][]string // shard ID -> [leader, follower1, follower2...]
-	mu sync.RWMutex
+	hashValues    []uint32          // store sorted list of hash values for binary search
+	hashToShard   map[uint32]string // map hash values to shard IDs
+	nodeAddresses map[string]string
+	virtualNodes  int                 // number of virtual nodes per server
+	shardToNodes  map[string][]string // shard ID -> [leader, follower1, follower2...]
+	mu            sync.RWMutex
 }
 
 // creates a new hash ring with the specified number of virtual nodes per physical node
 func NewHashRing(virtualNodes int) *HashRing {
 	return &HashRing{
-		hashValues: make([]uint32, 0),
-		hashToShard: make(map[uint32]string),
+		hashValues:    make([]uint32, 0),
+		hashToShard:   make(map[uint32]string),
 		nodeAddresses: make(map[string]string),
-		shardToNodes: make(map[string][]string),
-		virtualNodes: virtualNodes,
+		shardToNodes:  make(map[string][]string),
+		virtualNodes:  virtualNodes,
 	}
 }
 
@@ -42,7 +42,7 @@ func (hr *HashRing) hash(key string) uint32 {
 	hashBytes := h.Sum(nil)
 
 	// convert first 4 bytes to uint32 using big-endian byte order
-	// only need 32 bits (4 bytes) to create enough hash space 
+	// only need 32 bits (4 bytes) to create enough hash space
 	return binary.BigEndian.Uint32(hashBytes[:4])
 }
 
@@ -55,7 +55,7 @@ func (hr *HashRing) AddShard(shardID string) {
 		// create unique virtual node key and hash it
 		virtualKey := fmt.Sprintf("%s-%d", shardID, i)
 		hashValue := hr.hash(virtualKey)
-		
+
 		// store mapping from hash position and add hash value to sorted list
 		hr.hashToShard[hashValue] = shardID
 		hr.hashValues = append(hr.hashValues, hashValue)
@@ -92,7 +92,7 @@ func (hr *HashRing) RemoveShard(shardID string) {
 		// remove hash value from sorted slice
 		for idx, val := range hr.hashValues {
 			if val == hashValue {
-				hr.hashValues = append(hr.hashValues[:idx], hr.hashValues[idx + 1:]...)
+				hr.hashValues = append(hr.hashValues[:idx], hr.hashValues[idx+1:]...)
 				removedCount++
 				break
 			}
@@ -189,7 +189,7 @@ func (hr *HashRing) GetAllNodes() []string {
 func (hr *HashRing) SetNodeAddress(nodeID string, address string) {
 	hr.mu.Lock()
 	defer hr.mu.Unlock()
-	
+
 	if hr.nodeAddresses == nil {
 		hr.nodeAddresses = make(map[string]string)
 	}
@@ -255,7 +255,7 @@ func (hr *HashRing) GetShardNodes(shardID string) ([]string, error) {
 
 // returns the leader node ID for a shard (first node in list)
 func (hr *HashRing) GetShardLeader(shardID string) (string, error) {
-	nodes, err := hr.GetShardNodes(shardID) 
+	nodes, err := hr.GetShardNodes(shardID)
 	if err != nil {
 		return "", err
 	}

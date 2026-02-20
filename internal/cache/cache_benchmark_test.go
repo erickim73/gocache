@@ -12,7 +12,7 @@ import (
 
 var (
 	benchMetricsCollector *metrics.Collector
-	benchMetricsOnce sync.Once
+	benchMetricsOnce      sync.Once
 )
 
 func getBenchMetricsCollector() *metrics.Collector {
@@ -30,16 +30,16 @@ func BenchmarkCacheSet(b *testing.B) {
 	if err != nil {
 		b.Fatalf("error creating new cache: %v", err)
 	}
-	
+
 	// reset timer to exclude setup time
 	b.ResetTimer()
-	
+
 	// b.N is automatically determined by the testing framework
 	for i := 0; i < b.N; i++ {
 		// use different keys to avoid cache hits
 		key := fmt.Sprintf("key:%d", i%1000)
 		value := fmt.Sprintf("value:%d", i)
-		
+
 		cache.Set(key, value, 0) // 0 = no expiration
 	}
 }
@@ -51,16 +51,16 @@ func BenchmarkCacheGet(b *testing.B) {
 	if err != nil {
 		b.Fatalf("error creating new cache: %v", err)
 	}
-	
+
 	// pre-populate cache with data
 	for i := 0; i < 1000; i++ {
 		key := fmt.Sprintf("key:%d", i)
 		value := fmt.Sprintf("value:%d", i)
 		cache.Set(key, value, 0)
 	}
-	
+
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		// access keys that exist (cache hits)
 		key := fmt.Sprintf("key:%d", i%1000)
@@ -75,17 +75,17 @@ func BenchmarkCacheMixed(b *testing.B) {
 	if err != nil {
 		b.Fatalf("error creating new cache: %v", err)
 	}
-	
+
 	// pre-populate
 	for i := 0; i < 1000; i++ {
 		cache.Set(fmt.Sprintf("key:%d", i), fmt.Sprintf("value:%d", i), 0)
 	}
-	
+
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		key := fmt.Sprintf("key:%d", i%1000)
-		
+
 		// 70% reads, 30% writes (realistic ratio)
 		if i%10 < 7 {
 			cache.Get(key)
@@ -102,9 +102,9 @@ func BenchmarkCacheSetParallel(b *testing.B) {
 	if err != nil {
 		b.Fatalf("error creating new cache: %v", err)
 	}
-	
+
 	b.ResetTimer()
-	
+
 	// runs the benchmark function in parallel
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
@@ -125,14 +125,14 @@ func BenchmarkCacheGetParallel(b *testing.B) {
 	if err != nil {
 		b.Fatalf("error creating new cache: %v", err)
 	}
-	
+
 	// pre-populate with data
 	for i := 0; i < 10000; i++ {
 		cache.Set(fmt.Sprintf("key:%d", i), fmt.Sprintf("value:%d", i), 0)
 	}
-	
+
 	b.ResetTimer()
-	
+
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
@@ -150,19 +150,19 @@ func BenchmarkCacheMixedParallel(b *testing.B) {
 	if err != nil {
 		b.Fatalf("error creating new cache: %v", err)
 	}
-	
+
 	// pre-populate
 	for i := 0; i < 10000; i++ {
 		cache.Set(fmt.Sprintf("key:%d", i), fmt.Sprintf("value:%d", i), 0)
 	}
-	
+
 	b.ResetTimer()
-	
+
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
 			key := fmt.Sprintf("key:%d", i%10000)
-			
+
 			// 70% reads, 30% writes
 			if i%10 < 7 {
 				cache.Get(key)
@@ -181,9 +181,9 @@ func BenchmarkCacheWithTTL(b *testing.B) {
 	if err != nil {
 		b.Fatalf("error creating new cache: %v", err)
 	}
-	
+
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		key := fmt.Sprintf("key:%d", i%1000)
 		value := fmt.Sprintf("value:%d", i)
@@ -200,9 +200,9 @@ func BenchmarkCacheEviction(b *testing.B) {
 	if err != nil {
 		b.Fatalf("error creating new cache: %v", err)
 	}
-	
+
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		// always use new keys to trigger evictions
 		key := fmt.Sprintf("key:%d", i)
@@ -218,11 +218,11 @@ func BenchmarkMemoryAllocations(b *testing.B) {
 	if err != nil {
 		b.Fatalf("error creating new cache: %v", err)
 	}
-	
+
 	// report allocations
 	b.ReportAllocs()
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		key := fmt.Sprintf("key:%d", i%1000)
 		value := fmt.Sprintf("value:%d", i)
@@ -237,20 +237,20 @@ func BenchmarkHighContention(b *testing.B) {
 	if err != nil {
 		b.Fatalf("error creating new cache: %v", err)
 	}
-	
+
 	// pre-populate with just 10 keys (high contention)
 	for i := 0; i < 10; i++ {
 		cache.Set(fmt.Sprintf("key:%d", i), fmt.Sprintf("value:%d", i), 0)
 	}
-	
+
 	b.ResetTimer()
-	
+
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
 			// everyone fights over the same 10 keys
 			key := fmt.Sprintf("key:%d", i%10)
-			
+
 			if i%2 == 0 {
 				cache.Get(key)
 			} else {
@@ -268,9 +268,9 @@ func BenchmarkLowContention(b *testing.B) {
 	if err != nil {
 		b.Fatalf("error creating new cache: %v", err)
 	}
-	
+
 	b.ResetTimer()
-	
+
 	b.RunParallel(func(pb *testing.PB) {
 		// each goroutine gets its own key space using goroutine ID simulation
 		offset := rand.Intn(1000000)

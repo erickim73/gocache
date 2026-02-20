@@ -8,7 +8,7 @@ import (
 
 func TestHashRing_BasicOperations(t *testing.T) {
 	// 3 virtual nodes for testing
-	ring := NewHashRing(3) 
+	ring := NewHashRing(3)
 
 	// test 1: empty ring should return error
 	_, err := ring.GetNode("key1")
@@ -173,7 +173,7 @@ func TestHashRing_Concurrent(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func(id int) {
-			defer wg.Done() 
+			defer wg.Done()
 			nodeID := fmt.Sprintf("concurrent-node-%d", id)
 			ring.AddShard(nodeID)
 		}(i)

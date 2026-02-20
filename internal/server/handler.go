@@ -22,9 +22,9 @@ type ConnectionState struct {
 	subscriberMode bool // is connection subscribed to any channels
 
 	// transaction state tracking
-	inTransaction bool // true when client has called MULTI but not yet EXEC/DISCARD
-	commandQueue [][]interface{} // queued commands waiting for EXEC (stores raw command slices)
-	transactionError error // set if command validation failed during queueing
+	inTransaction    bool            // true when client has called MULTI but not yet EXEC/DISCARD
+	commandQueue     [][]interface{} // queued commands waiting for EXEC (stores raw command slices)
+	transactionError error           // set if command validation failed during queueing
 }
 
 // returns true if the operation must be handled by the leader
@@ -75,9 +75,9 @@ func handleConnection(conn net.Conn, cache *cache.Cache, aof *persistence.AOF, n
 
 	// track connection state
 	state := &ConnectionState{
-		subscriberMode: false,
-		inTransaction: false,
-		commandQueue: nil,
+		subscriberMode:   false,
+		inTransaction:    false,
+		commandQueue:     nil,
 		transactionError: nil,
 	}
 
@@ -309,7 +309,7 @@ func queueCommandForTransaction(conn net.Conn, state *ConnectionState, resultSli
 		if len(resultSlice) < 3 || len(resultSlice) > 5 {
 			validationErr = fmt.Errorf("wrong number of arguments for 'set' command")
 		}
-		case "GET":
+	case "GET":
 		if len(resultSlice) != 2 {
 			validationErr = fmt.Errorf("wrong number of arguments for 'get' command")
 		}
@@ -337,7 +337,7 @@ func queueCommandForTransaction(conn net.Conn, state *ConnectionState, resultSli
 
 	// validation passed. add command to queue
 	state.commandQueue = append(state.commandQueue, resultSlice)
-	
+
 	// send queued response to client
 	conn.Write([]byte(protocol.EncodeSimpleString("QUEUED")))
 
@@ -359,7 +359,7 @@ func handleMulti(conn net.Conn, state *ConnectionState) {
 	// initialize transaction state
 	state.inTransaction = true
 	state.commandQueue = make([][]interface{}, 0) // empty queue for new transaction
-	state.transactionError = nil // no errors yet
+	state.transactionError = nil                  // no errors yet
 
 	// send ok response
 	conn.Write([]byte(protocol.EncodeSimpleString("OK")))
@@ -386,18 +386,18 @@ func handleExec(conn net.Conn, state *ConnectionState, cache *cache.Cache, aof *
 	// if any command has validation error during queueing, abort transaction
 	if state.transactionError != nil {
 		conn.Write([]byte(protocol.EncodeError("EXECABORT Transaction discarded because of previous errors.")))
-		slog.Debug("Transaction aborted due to validation error", 
+		slog.Debug("Transaction aborted due to validation error",
 			"error", state.transactionError,
 		)
 		return
 	}
 
 	results := make([]interface{}, len(state.commandQueue))
-	
+
 	slog.Debug("Executing transaction",
 		"command_count", len(state.commandQueue),
 	)
-	
+
 	cache.Lock()
 	defer cache.Unlock()
 
@@ -441,9 +441,9 @@ func handleExec(conn net.Conn, state *ConnectionState, cache *cache.Cache, aof *
 			// extract key, value, and handle ttl
 			key := cmdSlice[1].(string)
 			value := cmdSlice[2].(string)
-			
+
 			ttlSeconds := int64(0)
-			
+
 			if len(cmdSlice) == 5 {
 				ttlStr := cmdSlice[4].(string)
 				ttlSec, err := strconv.Atoi(ttlStr)
@@ -485,7 +485,7 @@ func handleExec(conn net.Conn, state *ConnectionState, cache *cache.Cache, aof *
 		case "DEL":
 			// extract key
 			key := cmdSlice[1].(string)
-			
+
 			// replicate to followers
 			if leader != nil {
 				err := leader.Replicate(replication.OpDelete, key, "", 0)
@@ -497,7 +497,7 @@ func handleExec(conn net.Conn, state *ConnectionState, cache *cache.Cache, aof *
 					)
 				}
 			}
-			
+
 			// write to aof
 			aofCommand := protocol.EncodeArray([]interface{}{"DEL", key})
 			err := aof.Append(aofCommand)
@@ -518,7 +518,7 @@ func handleExec(conn net.Conn, state *ConnectionState, cache *cache.Cache, aof *
 	}
 
 	conn.Write([]byte(arrayResponse))
-	
+
 	slog.Debug("Transaction completed successfully",
 		"commands_executed", len(results),
 	)
@@ -558,10 +558,10 @@ func executeSetCommand(resultSlice []interface{}, cache *cache.Cache, aof *persi
 	value := resultSlice[2].(string)
 
 	slog.Info("executeSetCommand called",
-        "key", key,
-        "value", value,
-        "arg_count", len(resultSlice),
-    )
+		"key", key,
+		"value", value,
+		"arg_count", len(resultSlice),
+	)
 
 	ttl := time.Duration(0)
 
@@ -578,33 +578,33 @@ func executeSetCommand(resultSlice []interface{}, cache *cache.Cache, aof *persi
 		ttl = time.Duration(ttlSec) * time.Second
 	} else if len(resultSlice) == 4 {
 		slog.Info("Parsing TTL",
-            "ttl_arg", resultSlice[3],
-            "ttl_type", fmt.Sprintf("%T", resultSlice[3]),
-        )
+			"ttl_arg", resultSlice[3],
+			"ttl_type", fmt.Sprintf("%T", resultSlice[3]),
+		)
 
 		seconds := resultSlice[3].(string)
 		ttlSec, err := strconv.Atoi(seconds)
 		if err != nil {
 			slog.Error("Failed to parse TTL",
-                "seconds_str", seconds,
-                "error", err,
-            )
+				"seconds_str", seconds,
+				"error", err,
+			)
 
 			return protocol.EncodeError("ERR value is not an integer or out of range")
 		}
 		ttl = time.Duration(ttlSec) * time.Second
 
 		slog.Info("TTL parsed successfully",
-            "ttl_seconds", ttlSec,
-            "ttl_duration", ttl,
-        )
+			"ttl_seconds", ttlSec,
+			"ttl_duration", ttl,
+		)
 	}
 
 	// assume lock is already held by caller
 	cache.SetInternal(key, value, ttl)
 
 	slog.Info("Set operation completed", "key", key)
-	
+
 	return protocol.EncodeSimpleString("OK")
 }
 
@@ -622,7 +622,7 @@ func executeGetCommand(resultSlice []interface{}, cache *cache.Cache) string {
 		// return null bulk string for missing keys
 		return protocol.EncodeBulkString("", true)
 	}
-	
+
 	return protocol.EncodeBulkString(result, false)
 }
 
@@ -813,7 +813,7 @@ func handleSet(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, aof
 		conn.Write([]byte(protocol.EncodeError("ERR READONLY You can't write against a read only replica")))
 		return
 	}
-	
+
 	if len(resultSlice) < 3 || len(resultSlice) > 5 {
 		conn.Write([]byte(protocol.EncodeError("Length of command doesn't match")))
 		return
@@ -828,15 +828,15 @@ func handleSet(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, aof
 	if len(resultSlice) == 5 {
 		qualifier := strings.ToUpper(resultSlice[3].(string))
 		if qualifier != "EX" {
-            conn.Write([]byte(protocol.EncodeError("ERR syntax error")))
-            return
-        }
+			conn.Write([]byte(protocol.EncodeError("ERR syntax error")))
+			return
+		}
 		ttlSec, err := strconv.Atoi(resultSlice[4].(string))
-        if err != nil {
-            conn.Write([]byte(protocol.EncodeError("ERR value is not an integer")))
-            return
-        }
-        ttl = time.Duration(ttlSec) * time.Second
+		if err != nil {
+			conn.Write([]byte(protocol.EncodeError("ERR value is not an integer")))
+			return
+		}
+		ttl = time.Duration(ttlSec) * time.Second
 	} else if len(resultSlice) == 4 {
 		ttlSec, err := strconv.Atoi(resultSlice[3].(string))
 		if err != nil {
@@ -903,7 +903,7 @@ func handleDelete(conn net.Conn, resultSlice []interface{}, cache *cache.Cache, 
 		conn.Write([]byte(protocol.EncodeError("ERR READONLY You can't write against a read only replica")))
 		return
 	}
-	
+
 	if len(resultSlice) != 2 {
 		conn.Write([]byte(protocol.EncodeError("Length of command doesn't match")))
 		return
@@ -955,8 +955,8 @@ func handlePing(conn net.Conn) {
 
 // helper function for min
 func min(a, b int) int {
-    if a < b {
-        return a
-    }
-    return b
+	if a < b {
+		return a
+	}
+	return b
 }

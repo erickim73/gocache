@@ -46,28 +46,28 @@ func TestMigrationCalculation(t *testing.T) {
 
 		// verify target is always node4
 		if task.ToNode != "node4" {
-			t.Errorf("Task %d: expected ToNode=node4, got %s", i + 1, task.ToNode)
+			t.Errorf("Task %d: expected ToNode=node4, got %s", i+1, task.ToNode)
 		}
 
 		// verify source is one of the existing nodes
 		if task.FromNode != "node1" && task.FromNode != "node2" && task.FromNode != "node3" {
-			t.Errorf("Task %d: invalid FromNode=%s", i + 1, task.FromNode)
+			t.Errorf("Task %d: invalid FromNode=%s", i+1, task.FromNode)
 		}
 	}
 }
 
 // tests that keys are correctly identified as in/out of range
-func TestHashRangeDetection(t * testing.T) {
+func TestHashRangeDetection(t *testing.T) {
 	hr := NewHashRing(100)
-	
+
 	// test case 1 - normal range. range [100, 500)
 	start := uint32(100)
 	end := uint32(500)
 
 	testCases := []struct {
-		hash uint32
+		hash     uint32
 		expected bool
-		reason string
+		reason   string
 	}{
 		{200, true, "hash in middle of range"},
 		{100, true, "hash at start (inclusive)"},
@@ -102,7 +102,7 @@ func TestHashRangeDetection(t * testing.T) {
 		{500, false, "hash in middle gap"},
 		{2000000000, false, "hash in middle gap"},
 	}
-	
+
 	t.Logf("Testing wrap-around range [%d, %d)", start, end)
 
 	for _, tc := range wrapTestCases {
@@ -202,7 +202,7 @@ func TestFullMigrationFlow(t *testing.T) {
 	actualPercent := float64(totalToMigrate) / float64(initialCount) * 100
 
 	// allow 10% margin of error due to hashing variance
-	if actualPercent < expectedPercent - 10 || actualPercent > expectedPercent + 10 {
+	if actualPercent < expectedPercent-10 || actualPercent > expectedPercent+10 {
 		t.Errorf("Expected ~%.0f%% keys to migrate, got %.1f%%", expectedPercent, actualPercent)
 	} else {
 		t.Logf("✓ Migration percentage within expected range (%.1f%% vs target ~%.0f%%)", actualPercent, expectedPercent)

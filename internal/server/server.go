@@ -33,22 +33,22 @@ func getMetricsCollector() *metrics.Collector {
 }
 
 type Server struct {
-	cfg *config.Config
-	listener net.Listener
-	aof *persistence.AOF
-	leader *replication.Leader
-	follower *replication.Follower
-	cancel context.CancelFunc
-	wg sync.WaitGroup
-	connMu sync.Mutex
+	cfg         *config.Config
+	listener    net.Listener
+	aof         *persistence.AOF
+	leader      *replication.Leader
+	follower    *replication.Follower
+	cancel      context.CancelFunc
+	wg          sync.WaitGroup
+	connMu      sync.Mutex
 	activeConns map[net.Conn]struct{}
-	replPort int 
+	replPort    int
 }
 
 // creates a server ready to be started
 func New(cfg *config.Config) *Server {
 	return &Server{
-		cfg: cfg,
+		cfg:         cfg,
 		activeConns: make(map[net.Conn]struct{}),
 	}
 }
@@ -161,9 +161,9 @@ func (s *Server) Start() {
 		s.follower = follower
 		go follower.Start()
 		slog.Info("Started as follower", "leader_address", cfg.LeaderAddr)
-	}	
-	
-	// create a tcp listener on a port 
+	}
+
+	// create a tcp listener on a port
 	address := fmt.Sprintf("0.0.0.0:%d", cfg.Port)
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
@@ -179,14 +179,13 @@ func (s *Server) Start() {
 	s.wg.Add(1)
 	defer s.wg.Done()
 
-
 	for {
 		// accept an incoming connection
 		conn, err := listener.Accept()
 		if err != nil {
 			// check context before deciding what to do with error
 			select {
-			case <- ctx.Done():
+			case <-ctx.Done():
 				slog.Info("Server shutting down cleanly")
 				return // intentional stop
 			default:
@@ -203,7 +202,6 @@ func (s *Server) Start() {
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
-
 
 			// unregister on exit
 			defer func() {
@@ -222,7 +220,7 @@ func (s *Server) Stop() {
 	if s.follower != nil {
 		s.follower.Stop()
 	}
-	
+
 	if s.cancel != nil {
 		s.cancel() // signal the accept loop that this is an intentional stop
 	}
@@ -240,10 +238,10 @@ func (s *Server) Stop() {
 	}
 
 	s.connMu.Lock()
-    for conn := range s.activeConns {
-        conn.Close()
-    }
-    s.connMu.Unlock()
+	for conn := range s.activeConns {
+		conn.Close()
+	}
+	s.connMu.Unlock()
 
 	// wait for all active connections to finish
 	s.wg.Wait()
@@ -262,8 +260,8 @@ func StartClusterMode(cfg *config.Config) {
 	if err != nil {
 		// node not in config -start in "pending join" mode
 		slog.Info("Node not found in initial cluster config",
-			"node_id", cfg.NodeID, 
-			"mode", "PENDING")     
+			"node_id", cfg.NodeID,
+			"mode", "PENDING")
 		startPendingNode(cfg)
 		return
 	}
@@ -398,7 +396,7 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 	if err != nil {
 		slog.Error("Error creating node state", "error", err)
 		return
-	}	
+	}
 
 	// set cluster components in node state for routing
 	nodeState.SetConfig(cfg)
@@ -426,10 +424,10 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 	// create and configure health check
 	slog.Info("Initializing Health Checker", "role", "leader")
 	healthChecker := cluster.NewHealthChecker(
-		hashRing, 
-		5 * time.Second, // check every 5 sec
-		3, // 3 failures before dead
-		2 * time.Second, // 2 second timeout per ping
+		hashRing,
+		5*time.Second, // check every 5 sec
+		3,             // 3 failures before dead
+		2*time.Second, // 2 second timeout per ping
 	)
 
 	// register all nodes from config
@@ -479,7 +477,7 @@ func startAsLeader(myNode *config.NodeInfo, myCache *cache.Cache, aof *persisten
 	slog.Info("Health checker started")
 
 	// create leader
-	leader, err := replication.NewLeader(myCache, aof, myNode.ReplPort) 
+	leader, err := replication.NewLeader(myCache, aof, myNode.ReplPort)
 	if err != nil {
 		slog.Error("Error creating leader", "error", err)
 		return
@@ -541,10 +539,10 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	// create and configure health check
 	slog.Info("Initializing Health Checker", "role", "follower")
 	healthChecker := cluster.NewHealthChecker(
-		hashRing, 
-		5 * time.Second, // check every 5 sec
-		3, // 3 failures before dead
-		2 * time.Second, // 2 second timeout per ping
+		hashRing,
+		5*time.Second, // check every 5 sec
+		3,             // 3 failures before dead
+		2*time.Second, // 2 second timeout per ping
 	)
 
 	// get leader nod ID to exclude from health checking
@@ -627,7 +625,7 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	}
 
 	nodeState.SetLeaderAddr(leaderClientAddr)
-	
+
 	// create follower
 	replPort := cfg.ReplPort
 	if replPort == 0 {
@@ -637,7 +635,7 @@ func startAsFollower(myNode *config.NodeInfo, myCache *cache.Cache, aof *persist
 	if cfg.PeerReplAddrs != "" {
 		peerReplAddrs = strings.Split(cfg.PeerReplAddrs, ",")
 	}
-	follower, err := replication.NewFollower(myCache, aof, shardLeaderReplAddr, myNode.ID, clusterNodes, myNode.Priority, myNode.ReplPort, peerReplAddrs, nodeState) 
+	follower, err := replication.NewFollower(myCache, aof, shardLeaderReplAddr, myNode.ID, clusterNodes, myNode.Priority, myNode.ReplPort, peerReplAddrs, nodeState)
 	if err != nil {
 		slog.Error("Error creating follower", "error", err)
 		return
@@ -751,15 +749,14 @@ func startPendingNode(cfg *config.Config) {
 	startClientListener(port, myCache, aof, nodeState)
 }
 
-
 func getHighestPriority(nodes []config.NodeInfo) int {
 	highest := 0
-	
+
 	for _, node := range nodes {
 		if node.Priority > highest {
 			highest = node.Priority
 		}
 	}
-	
+
 	return highest
 }

@@ -3,8 +3,8 @@ package persistence
 import (
 	"bufio"
 	"fmt"
-	"log/slog"
 	"io"
+	"log/slog"
 	"os"
 	"strconv"
 	"time"
@@ -24,7 +24,7 @@ func (aof *AOF) CreateSnapshot() error {
 
 	// create a temp snapshot file
 	tempName := aof.snapshotName + ".temp.rdb"
-	tempFile, err := os.OpenFile(tempName, os.O_CREATE | os.O_WRONLY | os.O_TRUNC, 0644)
+	tempFile, err := os.OpenFile(tempName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		slog.Error("Failed to create temp snapshot file",
 			"temp_file", tempName,
@@ -35,7 +35,7 @@ func (aof *AOF) CreateSnapshot() error {
 
 	success := false
 	defer func() {
-		if tempFile != nil { 
+		if tempFile != nil {
 			// check if already closed
 			tempFile.Close()
 		}
@@ -71,7 +71,7 @@ func (aof *AOF) CreateSnapshot() error {
 				continue // skip expired items
 			}
 		}
-		
+
 		ttlSeconds := strconv.Itoa(int(ttl.Seconds()))
 		aofCommand := protocol.EncodeArray([]interface{}{"SET", key, entry.Value, ttlSeconds})
 
@@ -116,7 +116,7 @@ func (aof *AOF) CreateSnapshot() error {
 	// lock during file swap
 	aof.mu.Lock()
 	defer aof.mu.Unlock()
-	
+
 	// rename temp file to original
 	err = os.Rename(tempName, aof.snapshotName)
 	if err != nil {
@@ -142,7 +142,7 @@ func (aof *AOF) CreateSnapshot() error {
 	}
 
 	// reopen aof file so future append calls work
-	newFile, err := os.OpenFile(aof.fileName, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0644)
+	newFile, err := os.OpenFile(aof.fileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		slog.Error("Failed to reopen AOF file",
 			"aof_file", aof.fileName,
@@ -150,7 +150,7 @@ func (aof *AOF) CreateSnapshot() error {
 		)
 		return fmt.Errorf("failed to reopen new aof: %v", err)
 	}
-	
+
 	aof.file = newFile
 
 	// mark rewrite successful
@@ -208,7 +208,7 @@ func (aof *AOF) LoadSnapshot() error {
 
 		// convert []interface{} to []string
 		parts := make([]string, len(partsInterface))
-		for i, v := range partsInterface{
+		for i, v := range partsInterface {
 			parts[i], ok = v.(string)
 			if !ok {
 				slog.Warn("Snapshot entry element is not a string",
@@ -244,7 +244,7 @@ func (aof *AOF) LoadSnapshot() error {
 
 func (aof *AOF) checkSnapshotTrigger() {
 	defer aof.wg.Done()
-	
+
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
@@ -252,7 +252,7 @@ func (aof *AOF) checkSnapshotTrigger() {
 
 	for {
 		select {
-		case <- ticker.C:
+		case <-ticker.C:
 
 			slog.Debug("Snapshot trigger fired, creating snapshot")
 
@@ -273,7 +273,7 @@ func (aof *AOF) checkSnapshotTrigger() {
 					"duration_ms", duration.Milliseconds(),
 				)
 			}
-		case <- aof.done:
+		case <-aof.done:
 			// log shutdown
 			slog.Debug("Snapshot trigger stopping (AOF closed)")
 

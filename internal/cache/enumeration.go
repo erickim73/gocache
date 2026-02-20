@@ -33,7 +33,7 @@ func hashInRange(hash uint32, start uint32, end uint32) bool {
 }
 
 // returns keys and their values in a hash range
-func (c *Cache) GetKeysWithValues(start uint32, end uint32, hashFunc func (string) uint32) map[string]string {
+func (c *Cache) GetKeysWithValues(start uint32, end uint32, hashFunc func(string) uint32) map[string]string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -41,7 +41,7 @@ func (c *Cache) GetKeysWithValues(start uint32, end uint32, hashFunc func (strin
 
 	for key, item := range c.data {
 		// skip expired items
-		if !item.expiresAt.IsZero() && time.Now().After(item.expiresAt)  {
+		if !item.expiresAt.IsZero() && time.Now().After(item.expiresAt) {
 			continue
 		}
 

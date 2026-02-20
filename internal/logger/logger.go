@@ -10,8 +10,8 @@ type LogLevel string
 
 const (
 	LevelDebug LogLevel = "debug"
-	LevelInfo LogLevel = "info"
-	LevelWarn LogLevel = "warn"
+	LevelInfo  LogLevel = "info"
+	LevelWarn  LogLevel = "warn"
 	LevelError LogLevel = "error"
 )
 
@@ -34,9 +34,9 @@ func InitLogger(level LogLevel) {
 
 	// create json handler that writes to stdout
 	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slogLevel, // minimum level to log
-		AddSource: false, // adds file:line information to logs
-		ReplaceAttr: nil, // allow customizing field names
+		Level:       slogLevel, // minimum level to log
+		AddSource:   false,     // adds file:line information to logs
+		ReplaceAttr: nil,       // allow customizing field names
 	})
 
 	// set as default logger for entire application
@@ -68,8 +68,8 @@ func InitTextLogger(level LogLevel) {
 	// TextHandler produces output like:
 	// time=2024-02-10T10:00:00.000Z level=INFO msg="Server started" port=7000
 	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slogLevel, // minimum level to log
-		AddSource: false, // adds file:line information to logs
+		Level:     slogLevel, // minimum level to log
+		AddSource: false,     // adds file:line information to logs
 	})
 
 	// set as default logger for entire application

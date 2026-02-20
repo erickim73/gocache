@@ -11,29 +11,29 @@ import (
 
 // operation type constants
 const (
-	OpSet = "SET"
+	OpSet    = "SET"
 	OpDelete = "DELETE"
 )
 
 // command type constants
 const (
-	CmdSync = "SYNC"
+	CmdSync      = "SYNC"
 	CmdReplicate = "REPLICATE"
 	CmdHeartbeat = "HEARTBEAT"
-	CmdSyncEnd = "SYNCEND"
+	CmdSyncEnd   = "SYNCEND"
 )
 
 type SyncRequest struct {
 	FollowerID string //unique id of follower
-	LastSeqNum int64 // last sequence number received (for reconnection)
+	LastSeqNum int64  // last sequence number received (for reconnection)
 }
 
 type ReplicateCommand struct {
-	SeqNum int64
+	SeqNum    int64
 	Operation string
-	Key string
-	Value string
-	TTL int64
+	Key       string
+	Value     string
+	TTL       int64
 }
 
 type HeartbeatCommand struct {
@@ -45,10 +45,10 @@ func EncodeSyncRequest(req *SyncRequest) ([]byte, error) {
 	if req == nil {
 		return nil, errors.New("request cannot be nil")
 	}
-	
+
 	command := protocol.EncodeArray([]interface{}{
-		CmdSync, 
-		req.FollowerID, 
+		CmdSync,
+		req.FollowerID,
 		req.LastSeqNum,
 	})
 
@@ -103,7 +103,7 @@ func EncodeReplicateCommand(comm *ReplicateCommand) ([]byte, error) {
 	if comm == nil {
 		return nil, errors.New("command cannot be nil")
 	}
-	
+
 	if comm.Operation == OpSet {
 		command := protocol.EncodeArray([]interface{}{
 			CmdReplicate,
@@ -123,7 +123,7 @@ func EncodeReplicateCommand(comm *ReplicateCommand) ([]byte, error) {
 		})
 		return []byte(command), nil
 	}
-	
+
 	return nil, fmt.Errorf("invalid operation: %s", comm.Operation)
 }
 
@@ -173,7 +173,7 @@ func DecodeReplicateCommand(reader *bufio.Reader) (*ReplicateCommand, error) {
 		if len(arr) != 6 {
 			return nil, fmt.Errorf("SET operation requires 6 elements, got %d", len(arr))
 		}
-		
+
 		value, ok = arr[4].(string)
 		if !ok {
 			return nil, errors.New("expected value to be a string")
@@ -198,11 +198,11 @@ func DecodeReplicateCommand(reader *bufio.Reader) (*ReplicateCommand, error) {
 	}
 
 	return &ReplicateCommand{
-		SeqNum: seqNum,
+		SeqNum:    seqNum,
 		Operation: operation,
-		Key: key,
-		Value: value,
-		TTL: ttl,
+		Key:       key,
+		Value:     value,
+		TTL:       ttl,
 	}, nil
 }
 
@@ -210,7 +210,7 @@ func EncodeHeartbeatCommand(req *HeartbeatCommand) ([]byte, error) {
 	if req == nil {
 		return nil, errors.New("command cannot be nil")
 	}
-	
+
 	command := protocol.EncodeArray([]interface{}{
 		CmdHeartbeat,
 		req.SeqNum,
@@ -288,7 +288,7 @@ func DecodeSyncEnd(arr []interface{}) (int64, bool) {
 }
 
 func ParseInt64(v interface{}) (int64, bool) {
-	switch val := v.(type){
+	switch val := v.(type) {
 	case int:
 		return int64(val), true
 	case int64:
@@ -300,4 +300,3 @@ func ParseInt64(v interface{}) (int64, bool) {
 		return 0, false
 	}
 }
-

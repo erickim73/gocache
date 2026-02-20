@@ -5,24 +5,24 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/internal/cluster"
 	"github.com/erickim73/gocache/internal/config"
 	"github.com/erickim73/gocache/internal/replication"
-	"github.com/erickim73/gocache/internal/cache"
 )
 
 // NodeState holds mutable state that can change during runtime
 type NodeState struct {
 	role       string
-	leader     *replication.Leader  // only set when this node is the leader
-	leaderAddr string 
+	leader     *replication.Leader // only set when this node is the leader
+	leaderAddr string
 	mu         sync.RWMutex
 
 	// cluster routing components for key distribution
-	hashRing *cluster.HashRing // determines which nodes owns which keys
-	config *config.Config // cluster configuration with all node info
-	migrator *cluster.Migrator
-	cache *cache.Cache
+	hashRing      *cluster.HashRing // determines which nodes owns which keys
+	config        *config.Config    // cluster configuration with all node info
+	migrator      *cluster.Migrator
+	cache         *cache.Cache
 	healthChecker *cluster.HealthChecker
 }
 
@@ -92,8 +92,7 @@ func (ns *NodeState) ShouldForwardRequest(key string, isWrite bool) (bool, strin
 		return true, leaderNodeID, targetAddr
 	}
 
-
-	// key belongs to different shard, find that shard's leader 
+	// key belongs to different shard, find that shard's leader
 	leaderNodeID, err := ns.hashRing.GetShardLeader(responsibleShardID)
 	if err != nil {
 		return false, "", ""
@@ -117,7 +116,7 @@ func (ns *NodeState) ShouldForwardRequest(key string, isWrite bool) (bool, strin
 func (ns *NodeState) SetHashRing(hr *cluster.HashRing) {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
-	
+
 	ns.hashRing = hr
 }
 
@@ -125,7 +124,7 @@ func (ns *NodeState) SetHashRing(hr *cluster.HashRing) {
 func (ns *NodeState) SetConfig(cfg *config.Config) {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
-	
+
 	ns.config = cfg
 }
 
@@ -167,11 +166,11 @@ func (ns *NodeState) SetLeaderAddr(addr string) {
 
 func NewNodeState(role string, leader *replication.Leader, leaderAddr string) (*NodeState, error) {
 	return &NodeState{
-		role: role,
-		leader: leader,
+		role:       role,
+		leader:     leader,
 		leaderAddr: leaderAddr,
-		hashRing: nil,
-		config: nil,
+		hashRing:   nil,
+		config:     nil,
 	}, nil
 }
 

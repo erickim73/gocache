@@ -13,7 +13,7 @@ import (
 // sends a batch of key-value pairs to another node
 func TransferKeys(targetAddr string, keys []string, values map[string]string) error {
 	// establish tcp connection to target node
-	conn, err := net.DialTimeout("tcp", targetAddr, 5 * time.Second)
+	conn, err := net.DialTimeout("tcp", targetAddr, 5*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %v", targetAddr, err)
 	}
@@ -158,7 +158,7 @@ func TransferKeysBatch(targetAddr string, keys []string, values map[string]strin
 	)
 
 	// create connection once for all batches
-	conn, err := net.DialTimeout("tcp", targetAddr, 5 * time.Second)
+	conn, err := net.DialTimeout("tcp", targetAddr, 5*time.Second)
 	if err != nil {
 		slog.Error("Failed to connect for batch transfer",
 			"target", targetAddr,
@@ -181,7 +181,7 @@ func TransferKeysBatch(targetAddr string, keys []string, values map[string]strin
 		}
 
 		// extract keys for this batch
-		batchKeys := keys[start: end]
+		batchKeys := keys[start:end]
 
 		// extract values for this batch
 		batchValues := make(map[string]string)
@@ -206,10 +206,10 @@ func TransferKeysBatch(targetAddr string, keys []string, values map[string]strin
 				"error", err,
 			)
 
-			return fmt.Errorf("batch %d failed: %v", i + 1, err)
+			return fmt.Errorf("batch %d failed: %v", i+1, err)
 		}
 
-		if i < numBatches - 1 {
+		if i < numBatches-1 {
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
@@ -297,15 +297,15 @@ func VerifyTransfer(targetAddr string, keys []string) error {
 		"target", targetAddr,
 		"key_count", len(keys),
 	)
-	
+
 	// connect to target
-	conn, err := net.DialTimeout("tcp", targetAddr, 5 * time.Second)
+	conn, err := net.DialTimeout("tcp", targetAddr, 5*time.Second)
 	if err != nil {
 		slog.Error("Failed to connect for verification",
 			"target", targetAddr,
 			"error", err,
 		)
-		
+
 		return fmt.Errorf("failed to connect for verification: %v", err)
 	}
 	defer conn.Close()

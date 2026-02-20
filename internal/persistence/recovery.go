@@ -2,11 +2,10 @@ package persistence
 
 import (
 	"fmt"
-	"time"
 	"log/slog"
+	"time"
 
 	"github.com/erickim73/gocache/internal/cache"
-
 )
 
 // reads aof and applies operations to cache
@@ -19,7 +18,7 @@ func RecoverAOF(cache *cache.Cache, aof *AOF, aofName string, snapshotName strin
 	// check for snapshot first
 	if SnapshotExists(snapshotName) {
 		slog.Info("Snapshot file found, loading...", "file", snapshotName)
-		
+
 		err := aof.LoadSnapshot()
 		if err != nil {
 			slog.Error("Failed to load snapshot",
@@ -28,7 +27,7 @@ func RecoverAOF(cache *cache.Cache, aof *AOF, aofName string, snapshotName strin
 			)
 			return fmt.Errorf("error loading snapshot: %v", err)
 		}
-		slog.Info("Snapshot loaded successfully", 
+		slog.Info("Snapshot loaded successfully",
 			"file", snapshotName,
 		)
 	} else {
@@ -44,7 +43,7 @@ func RecoverAOF(cache *cache.Cache, aof *AOF, aofName string, snapshotName strin
 			slog.Error("Failed to read AOF operations",
 				"file", aofName,
 				"error", err,
-			)		
+			)
 			return fmt.Errorf("error reading operations from aof: %v", err)
 		}
 

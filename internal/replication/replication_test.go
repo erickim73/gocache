@@ -8,7 +8,7 @@ import (
 
 func TestSyncCommandRoundTrip(t *testing.T) {
 	SyncCmd := &SyncRequest{
-		FollowerID: "follower1", 
+		FollowerID: "follower1",
 		LastSeqNum: 1,
 	}
 
@@ -35,11 +35,11 @@ func TestSyncCommandRoundTrip(t *testing.T) {
 
 func TestReplicateCommandRoundTrip(t *testing.T) {
 	SetCmd := &ReplicateCommand{
-		SeqNum: 42,
+		SeqNum:    42,
 		Operation: OpSet,
-		Key: "testing",
-		Value: "value",
-		TTL: 3600,
+		Key:       "testing",
+		Value:     "value",
+		TTL:       3600,
 	}
 
 	encoded, err := EncodeReplicateCommand(SetCmd)
@@ -70,9 +70,9 @@ func TestReplicateCommandRoundTrip(t *testing.T) {
 
 	// test delete
 	delCmd := &ReplicateCommand{
-		SeqNum: 43,
+		SeqNum:    43,
 		Operation: OpDelete,
-		Key: "testing",
+		Key:       "testing",
 	}
 
 	encoded2, err := EncodeReplicateCommand(delCmd)
@@ -87,7 +87,6 @@ func TestReplicateCommandRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error Decoding Replicate Command: %v", err)
 	}
-
 
 	if decoded2.SeqNum != 43 {
 		t.Errorf("SeqNum should be 43, got %d", decoded2.SeqNum)
@@ -105,7 +104,7 @@ func TestReplicateCommandRoundTrip(t *testing.T) {
 
 func TestHeartbeatCommandRoundTrip(t *testing.T) {
 	HeartbeatCmd := &HeartbeatCommand{
-		SeqNum: 44, 
+		SeqNum: 44,
 		NodeID: "101",
 	}
 

@@ -24,10 +24,10 @@ func (m *mockAddr) String() string {
 // mock network connection for testing
 type mockConn struct {
 	net.Conn
-	id string // unique identifier for debugging
-	closed bool
+	id      string // unique identifier for debugging
+	closed  bool
 	written []byte // track what was written to this connection
-	mu sync.Mutex
+	mu      sync.Mutex
 }
 
 // returns the remote network address
@@ -64,7 +64,7 @@ func (m *mockConn) Read(b []byte) (n int, err error) {
 func (m *mockConn) Write(b []byte) (n int, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	if m.closed {
 		return 0, net.ErrClosed
 	}
@@ -77,7 +77,7 @@ func (m *mockConn) Write(b []byte) (n int, err error) {
 func (m *mockConn) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.closed = true
 	return nil
 }
@@ -85,7 +85,7 @@ func (m *mockConn) Close() error {
 // creates a new mock connection with a unique ID
 func newMockConn(id string) *mockConn {
 	return &mockConn{
-		id: id,
+		id:      id,
 		written: make([]byte, 0),
 	}
 }
@@ -557,55 +557,54 @@ func TestSlowSubscriber(t *testing.T) {
 	// This test mainly verifies no deadlock occurs
 }
 
-
 func TestNoGoroutineLeak(t *testing.T) {
-    ps := NewPubSub()
-    
-    // record starting goroutine count
-    before := runtime.NumGoroutine()
-    
-    // create and remove 10 connections
-    for i := 0; i < 10; i++ {
-        conn := newMockConn(fmt.Sprintf("conn%d", i))
-        ps.Subscribe(conn, "test")
-        time.Sleep(10 * time.Millisecond) // let goroutine start
-        ps.RemoveConnection(conn)
-    }
-    
-    // give goroutines time to exit
-    time.Sleep(100 * time.Millisecond)
-    
-    // check goroutine count
-    after := runtime.NumGoroutine()
-    leaked := after - before
-    
-    if leaked > 0 {
-        t.Errorf("Goroutine leak detected: %d goroutines leaked", leaked)
-    }
+	ps := NewPubSub()
+
+	// record starting goroutine count
+	before := runtime.NumGoroutine()
+
+	// create and remove 10 connections
+	for i := 0; i < 10; i++ {
+		conn := newMockConn(fmt.Sprintf("conn%d", i))
+		ps.Subscribe(conn, "test")
+		time.Sleep(10 * time.Millisecond) // let goroutine start
+		ps.RemoveConnection(conn)
+	}
+
+	// give goroutines time to exit
+	time.Sleep(100 * time.Millisecond)
+
+	// check goroutine count
+	after := runtime.NumGoroutine()
+	leaked := after - before
+
+	if leaked > 0 {
+		t.Errorf("Goroutine leak detected: %d goroutines leaked", leaked)
+	}
 }
 
 func TestRemoveConnectionClosesChannels(t *testing.T) {
-    ps := NewPubSub()
-    conn := newMockConn("conn1")
-    
-    ps.Subscribe(conn, "news")
-    time.Sleep(10 * time.Millisecond)
-    
-    // get reference to subscriber before removal
-    subscribers := ps.subscribers["news"]
-    subscriber := subscribers[conn]
-    
-    // remove connection
-    ps.RemoveConnection(conn)
-    
-    // try to send on channels - should panic if not closed
-    defer func() {
-        if r := recover(); r == nil {
-            t.Error("Expected panic from sending on closed channel")
-        }
-    }()
-    
-    subscriber.messages <- Message{Channel: "test", Content: "test"}
+	ps := NewPubSub()
+	conn := newMockConn("conn1")
+
+	ps.Subscribe(conn, "news")
+	time.Sleep(10 * time.Millisecond)
+
+	// get reference to subscriber before removal
+	subscribers := ps.subscribers["news"]
+	subscriber := subscribers[conn]
+
+	// remove connection
+	ps.RemoveConnection(conn)
+
+	// try to send on channels - should panic if not closed
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Expected panic from sending on closed channel")
+		}
+	}()
+
+	subscriber.messages <- Message{Channel: "test", Content: "test"}
 }
 
 func TestNoGoroutineLeakAfterRemove(t *testing.T) {

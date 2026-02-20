@@ -9,6 +9,7 @@ import (
 	"github.com/erickim73/gocache/internal/persistence"
 	"gopkg.in/yaml.v3"
 )
+
 type NodeInfo struct {
 	ID       string `yaml:"id"`
 	Host     string `yaml:"host"`
@@ -20,29 +21,29 @@ type NodeInfo struct {
 }
 
 type yamlConfig struct {
-	Port                    int         `yaml:"port"`
-	MetricsPort 			int 	    `yaml:"metrics_port"`
-	MaxCacheSize            int         `yaml:"max_cache_size"`
-	Role 					string      `yaml:"role"`
-	LeaderAddr 				string      `yaml:"leader_addr"`
-	ReplPort 				int 		`yaml:"repl_port"`
-	AOFFileName             string      `yaml:"aof_file"`
-	SnapshotFileName        string      `yaml:"snapshot_file"`
-	SyncPolicy              string      `yaml:"sync_policy"`
-	SnapshotIntervalSeconds int         `yaml:"snapshot_interval_seconds"`
-	GrowthFactor            int64       `yaml:"growth_factor"`
-    
+	Port                    int    `yaml:"port"`
+	MetricsPort             int    `yaml:"metrics_port"`
+	MaxCacheSize            int    `yaml:"max_cache_size"`
+	Role                    string `yaml:"role"`
+	LeaderAddr              string `yaml:"leader_addr"`
+	ReplPort                int    `yaml:"repl_port"`
+	AOFFileName             string `yaml:"aof_file"`
+	SnapshotFileName        string `yaml:"snapshot_file"`
+	SyncPolicy              string `yaml:"sync_policy"`
+	SnapshotIntervalSeconds int    `yaml:"snapshot_interval_seconds"`
+	GrowthFactor            int64  `yaml:"growth_factor"`
+
 	// cluster fields to YAML parsing
-	NodeID                  string      `yaml:"node_id"`
-	Nodes                   []NodeInfo  `yaml:"nodes"`
-	Shards 					[]ShardInfo `yaml:"shards"`
-	LogLevel 				string 		`yaml:"log_level"` // debug, info, warn, error
+	NodeID   string      `yaml:"node_id"`
+	Nodes    []NodeInfo  `yaml:"nodes"`
+	Shards   []ShardInfo `yaml:"shards"`
+	LogLevel string      `yaml:"log_level"` // debug, info, warn, error
 }
 
 type Config struct {
 	// server settings
 	Port int
-	
+
 	// metrics settings
 	MetricsPort int
 
@@ -50,11 +51,11 @@ type Config struct {
 	MaxCacheSize int
 
 	// replication settings
-	Role string // leader or follower
-	LeaderAddr string
-	Priority int
-	ReplPort int
-	PeerReplAddrs string 
+	Role          string // leader or follower
+	LeaderAddr    string
+	Priority      int
+	ReplPort      int
+	PeerReplAddrs string
 
 	// persistence settings
 	AOFFileName      string
@@ -64,11 +65,11 @@ type Config struct {
 	GrowthFactor     int64
 
 	// cluster settings
-	NodeID           string
-	Nodes            []NodeInfo
+	NodeID string
+	Nodes  []NodeInfo
 
 	// shard settings
-	Shards []ShardInfo 
+	Shards []ShardInfo
 
 	// logging statistics
 	LogLevel string
@@ -76,18 +77,18 @@ type Config struct {
 
 // defines a replication group
 type ShardInfo struct {
-	ShardID string `yaml:"shard_id"` // e.g., "shard1"
-	LeaderID string `yaml:"leader_id"` // nodeID of leader
+	ShardID   string   `yaml:"shard_id"`  // e.g., "shard1"
+	LeaderID  string   `yaml:"leader_id"` // nodeID of leader
 	Followers []string `yaml:"followers"` // node IDs of followers
 }
 
 func DefaultConfig() *Config {
 	return &Config{
 		Port:             7000,
-		MetricsPort: 	  9090,
+		MetricsPort:      9090,
 		MaxCacheSize:     1000,
-		Role: 			  "leader",
-		LeaderAddr: 	  "localhost:7001",
+		Role:             "leader",
+		LeaderAddr:       "localhost:7001",
 		AOFFileName:      "cache.aof",
 		SnapshotFileName: "cache.rdb",
 		SyncPolicy:       "everysecond",
@@ -95,7 +96,7 @@ func DefaultConfig() *Config {
 		GrowthFactor:     2,
 		NodeID:           "",
 		Nodes:            []NodeInfo{},
-		LogLevel: 		  "info",
+		LogLevel:         "info",
 	}
 }
 
@@ -114,11 +115,11 @@ func LoadFromFile(fileName string) (*Config, error) {
 	// convert to config struct
 	return &Config{
 		Port:             yc.Port,
-		MetricsPort: 	  yc.MetricsPort,
+		MetricsPort:      yc.MetricsPort,
 		MaxCacheSize:     yc.MaxCacheSize,
-		Role: 			  yc.Role,
-		LeaderAddr: 	  yc.LeaderAddr,
-		ReplPort: 	      yc.ReplPort,
+		Role:             yc.Role,
+		LeaderAddr:       yc.LeaderAddr,
+		ReplPort:         yc.ReplPort,
 		AOFFileName:      yc.AOFFileName,
 		SnapshotFileName: yc.SnapshotFileName,
 		SyncPolicy:       yc.SyncPolicy,
@@ -126,7 +127,7 @@ func LoadFromFile(fileName string) (*Config, error) {
 		GrowthFactor:     yc.GrowthFactor,
 		NodeID:           yc.NodeID,
 		Nodes:            yc.Nodes,
-		Shards: 		  yc.Shards,
+		Shards:           yc.Shards,
 		LogLevel:         yc.LogLevel,
 	}, nil
 }
@@ -259,7 +260,7 @@ func (c *Config) GetHighestPriorityNode() *NodeInfo {
 	}
 
 	return highest
-}	
+}
 
 // helper function for seeing if node is highest priority
 func (c *Config) AmIHighestPriority() bool {

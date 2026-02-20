@@ -7,9 +7,9 @@ import (
 func TestLRUEviction(t *testing.T) {
 	lru := New(3)
 
-	lru.Add("A") // [A]
+	lru.Add("A")          // [A]
 	nodeB := lru.Add("B") // [B, A]
-	lru.Add("C") // [C, B, A]
+	lru.Add("C")          // [C, B, A]
 
 	if lru.head.key != "C" {
 		t.Errorf("The head of the lru should be C, got %s", lru.head.key)

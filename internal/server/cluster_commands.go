@@ -3,9 +3,9 @@ package server
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"net"
 	"time"
-	"log/slog"
 
 	"github.com/erickim73/gocache/internal/cache"
 	"github.com/erickim73/gocache/pkg/protocol"
@@ -38,7 +38,6 @@ func handleClusterCommand(conn net.Conn, command []interface{}, cache *cache.Cac
 	}
 }
 
-
 func handleClusterTopology(conn net.Conn, command []interface{}, nodeState *NodeState) {
 	if len(command) < 5 {
 		conn.Write([]byte(protocol.EncodeError("TOPOLOGY requires operation, nodeID, and address")))
@@ -60,7 +59,7 @@ func handleClusterTopology(conn net.Conn, command []interface{}, nodeState *Node
 		)
 		hashRing.AddShard(targetNodeID)
 		hashRing.SetNodeAddress(targetNodeID, targetNodeAddr)
-		
+
 		slog.Info("Hash ring updated", "operation", "ADD", "node_id", targetNodeID)
 
 	case "REMOVE":
@@ -113,14 +112,14 @@ func handleClusterAddNode(conn net.Conn, command []interface{}, cache *cache.Cac
 		"node_id", newNodeID,
 		"address", newNodeAddr,
 	)
-	testConn, err := net.DialTimeout("tcp", newNodeAddr, 2 * time.Second)
+	testConn, err := net.DialTimeout("tcp", newNodeAddr, 2*time.Second)
 	if err != nil {
 		slog.Error("Connection test failed",
 			"node_id", newNodeID,
 			"address", newNodeAddr,
 			"error", err,
 		)
-		
+
 		errorMsg := fmt.Sprintf("Cannot connect to node %s at %s. Make sure the node is running first. Error: %v", newNodeID, newNodeAddr, err)
 		conn.Write([]byte(protocol.EncodeError(errorMsg)))
 		return
@@ -145,7 +144,7 @@ func handleClusterAddNode(conn net.Conn, command []interface{}, cache *cache.Cac
 			"target_node", newNodeID,
 			"error", err,
 		)
-		
+
 		// if migration fails, return error to client
 		conn.Write([]byte(protocol.EncodeError(fmt.Sprintf("Migration failed: %v", err))))
 		return
@@ -211,7 +210,7 @@ func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.
 	existingNodes := hashRing.GetAllNodes()
 	nodeExists := false
 	for _, existingNodeID := range existingNodes {
-		if existingNodeID== nodeID {
+		if existingNodeID == nodeID {
 			nodeExists = true
 			break
 		}
@@ -243,7 +242,7 @@ func handleClusterRemoveNode(conn net.Conn, command []interface{}, cache *cache.
 		return
 	}
 
-	// log migration 
+	// log migration
 	slog.Info("Data migration completed", "leaving_node", nodeID)
 
 	// broadcast to all other nodes in cluster
@@ -306,10 +305,10 @@ func handleClusterNodes(conn net.Conn, nodeState *NodeState) {
 	// build response string with node information
 	response := ""
 	for _, node := range config.Nodes {
-		// build full address 
+		// build full address
 		nodeAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
 
-		// determine node status from health checker 
+		// determine node status from health checker
 		status := "active"
 		if healthChecker != nil {
 			nodeStatus := healthChecker.GetNodeStatus(node.ID)
@@ -325,7 +324,7 @@ func handleClusterNodes(conn net.Conn, nodeState *NodeState) {
 
 // helper function to notify other nodes
 func notifyNodeAboutTopologyChange(nodeAddr string, operation string, targetNodeID string, targetNodeAddr string) error {
-	conn, err := net.DialTimeout("tcp", nodeAddr, 2 * time.Second)
+	conn, err := net.DialTimeout("tcp", nodeAddr, 2*time.Second)
 	if err != nil {
 		return err
 	}

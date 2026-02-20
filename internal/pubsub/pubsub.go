@@ -17,16 +17,16 @@ type Message struct {
 
 // represents a single client connection that is subscribed to one or more channels
 type Subscriber struct {
-	conn net.Conn // tcp connection to this subscriber
-	messages chan Message // buffered channel for queueing messages to send
-	done chan struct{} // signal channel to stop sendMessages goroutine
+	conn     net.Conn      // tcp connection to this subscriber
+	messages chan Message  // buffered channel for queueing messages to send
+	done     chan struct{} // signal channel to stop sendMessages goroutine
 }
 
 // manages all publish/subscribe operations in cache system
 type PubSub struct {
 	// map for O(1) subscriber lookup. ensures exactly one subscriber per connection
 	connectionToSubscriber map[net.Conn]*Subscriber
-	
+
 	// map channel names to set of connections subscribed to that channel
 	// example: subscribers["news"] = {conn1: subscriber1, conn2: subscriber2}
 	subscribers map[string]map[net.Conn]*Subscriber
@@ -43,8 +43,8 @@ type PubSub struct {
 func NewPubSub() *PubSub {
 	return &PubSub{
 		connectionToSubscriber: make(map[net.Conn]*Subscriber),
-		subscribers: make(map[string]map[net.Conn]*Subscriber),
-		subscriptions: make(map[net.Conn]map[string]bool),
+		subscribers:            make(map[string]map[net.Conn]*Subscriber),
+		subscriptions:          make(map[net.Conn]map[string]bool),
 	}
 }
 
@@ -59,14 +59,14 @@ func (ps *PubSub) Subscribe(conn net.Conn, channel string) error {
 	if !exists {
 		// create a subscriber struct since this is a new connection
 		subscriber = &Subscriber{
-			conn: conn,
+			conn:     conn,
 			messages: make(chan Message, 100),
-			done: make(chan struct{}),
+			done:     make(chan struct{}),
 		}
 
 		// store in direct lookup map
 		ps.connectionToSubscriber[conn] = subscriber
-		
+
 		// initialize channel set for this connection
 		ps.subscriptions[conn] = make(map[string]bool)
 
@@ -128,7 +128,7 @@ func (s *Subscriber) sendMessages() {
 				)
 				return
 			}
-		
+
 		case <-s.done:
 			// signal to stop this goroutine
 			slog.Debug("Received done signal, exiting sendMessages goroutine")
@@ -226,7 +226,7 @@ func (ps *PubSub) Unsubscribe(conn net.Conn, channel string) error {
 }
 
 // forcefully removes a connection and all its subscriptions
-func (ps *PubSub) RemoveConnection (conn net.Conn) {
+func (ps *PubSub) RemoveConnection(conn net.Conn) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
@@ -255,7 +255,7 @@ func (ps *PubSub) RemoveConnection (conn net.Conn) {
 		// remove from channel's subscriber set
 		if subscribers, ok := ps.subscribers[channel]; ok {
 			delete(subscribers, conn)
-			
+
 			// clean up empty channel entires
 			if len(subscribers) == 0 {
 				delete(ps.subscribers, channel)
