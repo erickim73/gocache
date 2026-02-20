@@ -5,3 +5,4 @@ cmd/data/*
 server.exe
 cache.aof
 cache.rdb
+pkg/client/python/__pycache__
