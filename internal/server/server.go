@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/erickim73/gocache/internal/cache"
@@ -42,7 +43,7 @@ type Server struct {
 	wg          sync.WaitGroup
 	connMu      sync.Mutex
 	activeConns map[net.Conn]struct{}
-	replPort    int
+	replPort    atomic.Int32
 }
 
 // creates a server ready to be started
@@ -55,7 +56,7 @@ func New(cfg *config.Config) *Server {
 
 // expose actual replication port for use by tests/harness
 func (s *Server) ReplPort() int {
-	return s.replPort
+	return int(s.replPort.Load())
 }
 
 // runs the server and blocks until stop() is called
@@ -138,7 +139,7 @@ func (s *Server) Start() {
 			}
 		}
 		// store actual port used so callers can read
-		s.replPort = replPort
+		s.replPort.Store(int32(replPort))
 
 		nodeState.SetLeader(s.leader)
 		go s.leader.Start()
