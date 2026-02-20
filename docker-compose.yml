@@ -45,8 +45,36 @@ services:
     depends_on:
       leader:
         condition: service_healthy
+    
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro 
+      - prometheus-data:/prometheus 
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"  
+    depends_on:
+      leader:
+        condition: service_healthy
+  
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"           
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin  
+    volumes:
+      - grafana-data:/var/lib/grafana 
+    depends_on:
+      - prometheus 
 
 volumes:
   leader-data:
   follower1-data:
   follower2-data:
+  prometheus-data:
+  grafana-data:

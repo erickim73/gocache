@@ -1,0 +1,14 @@
+global:
+  scrape_interval: 15s      # how often prometheus polls /metrics endpoints
+  evaluation_interval: 15s  # how often prometheus evaluates alerting rules
+
+scrape_configs:
+  # scrape gocache leader metrics
+  - job_name: "gocache-leader"
+    static_configs:
+      - targets: ["leader:9090"]  # docker service name, not localhost
+
+  # scrape gocache follower metrics (if you add metrics servers to followers later)
+  # - job_name: "gocache-followers"
+  #   static_configs:
+  #     - targets: ["follower1:9090", "follower2:9090"]
