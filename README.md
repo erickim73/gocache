@@ -60,7 +60,7 @@ A Redis-compatible distributed cache built from scratch in Go — featuring lead
               │                     │                     │
               ▼                     ▼                     ▼
      ┌──────────────────┐      -MOVED redirect     ┌──────────────────┐
-     │  Leader  Shard 1 │ ◀─────────────────────▶  │  Leader  Shard 2 │
+     │  Leader  Shard 1 │ ◀─────────────────────▶ │  Leader  Shard 2 │
      │  :7000   (RESP)  │                          │  :7001   (RESP)  │
      │  :7010   (repl)  │      consistent hash     │  :7011   (repl)  │
      │  :9090 (metrics) │                          │  :9091 (metrics) │
